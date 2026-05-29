@@ -244,7 +244,10 @@ textarea { resize:vertical; min-height:80px; }
       <span class="topbar-brand">CCC CO-PILOT</span>
       <span class="topbar-sub">Admin Dashboard</span>
     </div>
-    <button class="logout-btn" onclick="doLogout()">Sign Out</button>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button class="logout-btn" onclick="openChangePassword()">Change Password</button>
+      <button class="logout-btn" onclick="doLogout()">Sign Out</button>
+    </div>
   </div>
   <div class="nav">
     <button class="nav-btn active" onclick="showTab('stats')">📊 Stats</button>
@@ -343,6 +346,33 @@ textarea { resize:vertical; min-height:80px; }
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- CHANGE PASSWORD MODAL -->
+<div class="modal-overlay" id="modal-password">
+  <div class="modal">
+    <div class="modal-title">Change Password</div>
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Current Password</label>
+        <input type="password" id="cp-current" placeholder="Enter current password"/>
+      </div>
+      <div class="form-group full">
+        <label>New Password</label>
+        <input type="password" id="cp-new1" placeholder="At least 8 characters"/>
+      </div>
+      <div class="form-group full">
+        <label>Confirm New Password</label>
+        <input type="password" id="cp-new2" placeholder="Repeat new password"/>
+      </div>
+    </div>
+    <div id="cp-error" style="color:var(--red);font-size:12px;margin-top:8px;display:none;"></div>
+    <div id="cp-success" style="color:var(--green);font-size:12px;margin-top:8px;display:none;">Password updated successfully.</div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-password')">Cancel</button>
+      <button class="btn btn-primary" onclick="doChangePassword()">Update Password</button>
+    </div>
   </div>
 </div>
 
@@ -793,6 +823,42 @@ async function saveRule() {
 
   closeModal('modal-rule');
   loadRules();
+}
+
+// ── CHANGE PASSWORD ──────────────────────────────────────────
+function openChangePassword() {
+  ['cp-current','cp-new1','cp-new2'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('cp-error').style.display   = 'none';
+  document.getElementById('cp-success').style.display = 'none';
+  document.getElementById('modal-password').classList.add('open');
+}
+
+function doChangePassword() {
+  const current = document.getElementById('cp-current').value;
+  const new1    = document.getElementById('cp-new1').value;
+  const new2    = document.getElementById('cp-new2').value;
+  const err     = document.getElementById('cp-error');
+  const ok      = document.getElementById('cp-success');
+
+  err.style.display = 'none';
+  ok.style.display  = 'none';
+
+  if (current !== getPassword()) {
+    err.textContent = 'Current password is incorrect.';
+    err.style.display = 'block'; return;
+  }
+  if (new1.length < 8) {
+    err.textContent = 'New password must be at least 8 characters.';
+    err.style.display = 'block'; return;
+  }
+  if (new1 !== new2) {
+    err.textContent = 'New passwords do not match.';
+    err.style.display = 'block'; return;
+  }
+
+  localStorage.setItem('ccc-admin-pw', new1);
+  ok.style.display = 'block';
+  setTimeout(() => closeModal('modal-password'), 1500);
 }
 
 // ── HELPERS ──────────────────────────────────────────────────
