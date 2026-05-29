@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CCC Co-Pilot — Admin</title>
+<style>
+:root {
+  --bg: #0f0f11;
+  --bg2: #18181b;
+  --card: #1c1c1f;
+  --card2: #242428;
+  --border: #2e2e33;
+  --border2: #3a3a40;
+  --text: #f4f4f5;
+  --text2: #a1a1aa;
+  --text3: #52525b;
+  --amber: #f59e0b;
+  --amber-dim: rgba(245,158,11,.15);
+  --green: #4ade80;
+  --green-dim: rgba(74,222,128,.12);
+  --red: #f87171;
+  --red-dim: rgba(248,113,113,.12);
+  --blue: #60a5fa;
+  --blue-dim: rgba(96,165,250,.12);
+  --teal: #818cf8;
+  --font: 'SF Mono', 'Fira Code', monospace;
+  --sans: system-ui, -apple-system, sans-serif;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--bg); color:var(--text); font-family:var(--sans); min-height:100vh; }
+
+/* ── LOGIN ── */
+#login-screen {
+  position:fixed; inset:0; background:var(--bg);
+  display:flex; align-items:center; justify-content:center; z-index:100;
+}
+.login-box {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:16px; padding:40px; width:360px; text-align:center;
+}
+.login-logo { font-size:28px; font-weight:800; color:var(--amber); letter-spacing:-1px; margin-bottom:6px; }
+.login-sub { font-size:13px; color:var(--text3); margin-bottom:32px; }
+.login-box input {
+  width:100%; background:var(--bg2); border:1px solid var(--border2);
+  border-radius:8px; color:var(--text); font-family:var(--sans);
+  font-size:14px; padding:12px 14px; margin-bottom:12px; outline:none;
+}
+.login-box input:focus { border-color:var(--amber); }
+.login-btn {
+  width:100%; background:var(--amber); border:none; border-radius:8px;
+  color:#000; font-size:14px; font-weight:700; padding:12px;
+  cursor:pointer; transition:opacity .15s;
+}
+.login-btn:hover { opacity:.85; }
+.login-error { color:var(--red); font-size:12px; margin-top:8px; display:none; }
+
+/* ── LAYOUT ── */
+#app { display:none; }
+.topbar {
+  background:var(--card); border-bottom:1px solid var(--border);
+  padding:0 24px; height:56px; display:flex; align-items:center;
+  justify-content:space-between; position:sticky; top:0; z-index:10;
+}
+.topbar-brand { font-size:16px; font-weight:800; color:var(--amber); }
+.topbar-sub { font-size:11px; color:var(--text3); margin-left:8px; }
+.logout-btn {
+  background:transparent; border:1px solid var(--border2);
+  border-radius:6px; color:var(--text2); font-size:12px;
+  padding:5px 12px; cursor:pointer;
+}
+.logout-btn:hover { border-color:var(--red); color:var(--red); }
+
+.nav {
+  background:var(--bg2); border-bottom:1px solid var(--border);
+  padding:0 24px; display:flex; gap:4px;
+}
+.nav-btn {
+  background:transparent; border:none; color:var(--text2);
+  font-size:13px; font-weight:500; padding:14px 16px;
+  cursor:pointer; border-bottom:2px solid transparent;
+  transition:all .15s;
+}
+.nav-btn:hover { color:var(--text); }
+.nav-btn.active { color:var(--amber); border-bottom-color:var(--amber); }
+
+.main { padding:24px; max-width:1200px; margin:0 auto; }
+
+/* ── SECTION HEADERS ── */
+.section-header {
+  display:flex; align-items:center; justify-content:space-between;
+  margin-bottom:20px;
+}
+.section-title { font-size:18px; font-weight:700; }
+.section-sub { font-size:13px; color:var(--text2); margin-top:2px; }
+
+/* ── BUTTONS ── */
+.btn {
+  border:none; border-radius:8px; font-size:13px; font-weight:600;
+  padding:8px 16px; cursor:pointer; transition:opacity .15s;
+}
+.btn:hover { opacity:.85; }
+.btn-primary { background:var(--amber); color:#000; }
+.btn-success { background:var(--green); color:#000; }
+.btn-danger { background:var(--red); color:#000; }
+.btn-ghost {
+  background:transparent; border:1px solid var(--border2);
+  color:var(--text2); font-size:12px; padding:5px 10px;
+}
+.btn-ghost:hover { border-color:var(--text2); color:var(--text); }
+
+/* ── CARDS ── */
+.card {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:12px; overflow:hidden; margin-bottom:16px;
+}
+.card-header {
+  padding:14px 18px; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+  background:var(--card2);
+}
+.card-body { padding:18px; }
+
+/* ── STATS ── */
+.stats-grid {
+  display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr));
+  gap:12px; margin-bottom:24px;
+}
+.stat-card {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:12px; padding:20px;
+}
+.stat-value { font-size:32px; font-weight:800; color:var(--amber); }
+.stat-label { font-size:12px; color:var(--text2); margin-top:4px; }
+
+/* ── TABLE ── */
+.table-wrap { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th {
+  text-align:left; padding:10px 14px; font-size:11px;
+  font-weight:600; letter-spacing:.5px; text-transform:uppercase;
+  color:var(--text3); border-bottom:1px solid var(--border);
+  background:var(--card2);
+}
+td {
+  padding:12px 14px; border-bottom:1px solid var(--border);
+  vertical-align:middle;
+}
+tr:last-child td { border-bottom:none; }
+tr:hover td { background:var(--card2); }
+
+/* ── BADGES ── */
+.badge {
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:11px; font-weight:600; border-radius:20px;
+  padding:3px 10px; border:1px solid;
+}
+.badge-active { background:var(--green-dim); border-color:rgba(74,222,128,.3); color:var(--green); }
+.badge-inactive { background:var(--red-dim); border-color:rgba(248,113,113,.3); color:var(--red); }
+.badge-on { background:var(--green-dim); border-color:rgba(74,222,128,.3); color:var(--green); }
+.badge-off { background:var(--red-dim); border-color:rgba(248,113,113,.3); color:var(--red); }
+
+/* ── FORM ── */
+.form-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.form-group { display:flex; flex-direction:column; gap:6px; }
+.form-group.full { grid-column:1/-1; }
+label { font-size:12px; font-weight:600; color:var(--text2); }
+input, select, textarea {
+  background:var(--bg2); border:1px solid var(--border2);
+  border-radius:8px; color:var(--text); font-family:var(--sans);
+  font-size:13px; padding:9px 12px; outline:none; width:100%;
+}
+input:focus, select:focus, textarea:focus { border-color:var(--amber); }
+textarea { resize:vertical; min-height:80px; }
+
+/* ── MODAL ── */
+.modal-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,.7);
+  display:flex; align-items:center; justify-content:center;
+  z-index:200; display:none;
+}
+.modal-overlay.open { display:flex; }
+.modal {
+  background:var(--card); border:1px solid var(--border2);
+  border-radius:16px; padding:28px; width:500px; max-width:90vw;
+}
+.modal-title { font-size:16px; font-weight:700; margin-bottom:20px; }
+.modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:20px; }
+
+/* ── TABS ── */
+.tab-content { display:none; }
+.tab-content.active { display:block; }
+
+/* ── EMPTY ── */
+.empty { text-align:center; padding:48px; color:var(--text3); font-size:13px; }
+
+/* ── LOG ROW ── */
+.log-text { max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text2); font-size:12px; }
+.token-count { font-family:var(--font); font-size:11px; color:var(--teal); }
+
+/* ── TOGGLE ── */
+.toggle {
+  position:relative; display:inline-block; width:36px; height:20px; cursor:pointer;
+}
+.toggle input { opacity:0; width:0; height:0; }
+.toggle-slider {
+  position:absolute; inset:0; background:var(--border2);
+  border-radius:20px; transition:.2s;
+}
+.toggle-slider:before {
+  content:''; position:absolute; height:14px; width:14px;
+  left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.2s;
+}
+.toggle input:checked + .toggle-slider { background:var(--green); }
+.toggle input:checked + .toggle-slider:before { transform:translateX(16px); }
+
+/* ── LOADING ── */
+.loading { text-align:center; padding:32px; color:var(--text3); }
+.spin {
+  display:inline-block; width:20px; height:20px;
+  border:2px solid var(--border2); border-top-color:var(--amber);
+  border-radius:50%; animation:spin .7s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">CCC CO-PILOT</div>
+    <div class="login-sub">Admin Dashboard</div>
+    <input type="password" id="pw-input" placeholder="Enter password" onkeydown="if(event.key==='Enter')doLogin()"/>
+    <button class="login-btn" onclick="doLogin()">Sign In</button>
+    <div class="login-error" id="login-error">Incorrect password</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="topbar">
+    <div style="display:flex;align-items:center;">
+      <span class="topbar-brand">CCC CO-PILOT</span>
+      <span class="topbar-sub">Admin Dashboard</span>
+    </div>
+    <button class="logout-btn" onclick="doLogout()">Sign Out</button>
+  </div>
+  <div class="nav">
+    <button class="nav-btn active" onclick="showTab('stats')">📊 Stats</button>
+    <button class="nav-btn" onclick="showTab('shops')">🏪 Shops</button>
+    <button class="nav-btn" onclick="showTab('logs')">📋 Usage Logs</button>
+    <button class="nav-btn" onclick="showTab('rules')">⚙️ Rules</button>
+  </div>
+  <div class="main">
+
+    <!-- STATS TAB -->
+    <div class="tab-content active" id="tab-stats">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Overview</div>
+          <div class="section-sub">Live stats from Supabase</div>
+        </div>
+        <button class="btn btn-ghost" onclick="loadStats()">↻ Refresh</button>
+      </div>
+      <div class="stats-grid" id="stats-grid">
+        <div class="loading"><div class="spin"></div></div>
+      </div>
+    </div>
+
+    <!-- SHOPS TAB -->
+    <div class="tab-content" id="tab-shops">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Shops</div>
+          <div class="section-sub">Manage subscriber access by IP address</div>
+        </div>
+        <button class="btn btn-primary" onclick="openAddShop()">+ Add Shop</button>
+      </div>
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Shop Name</th>
+                <th>IP Address</th>
+                <th>Status</th>
+                <th>Plan</th>
+                <th>Contact</th>
+                <th>Added</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="shops-tbody">
+              <tr><td colspan="7"><div class="loading"><div class="spin"></div></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOGS TAB -->
+    <div class="tab-content" id="tab-logs">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Usage Logs</div>
+          <div class="section-sub">All AI transactions — most recent first</div>
+        </div>
+        <button class="btn btn-ghost" onclick="loadLogs()">↻ Refresh</button>
+      </div>
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Shop</th>
+                <th>IP</th>
+                <th>Section</th>
+                <th>Complaint</th>
+                <th>Tokens</th>
+              </tr>
+            </thead>
+            <tbody id="logs-tbody">
+              <tr><td colspan="6"><div class="loading"><div class="spin"></div></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- RULES TAB -->
+    <div class="tab-content" id="tab-rules">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Rules</div>
+          <div class="section-sub">Conditional question logic — edit without touching code</div>
+        </div>
+        <button class="btn btn-primary" onclick="openAddRule()">+ Add Rule</button>
+      </div>
+      <div id="rules-list">
+        <div class="loading"><div class="spin"></div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ADD SHOP MODAL -->
+<div class="modal-overlay" id="modal-shop">
+  <div class="modal">
+    <div class="modal-title">Add New Shop</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Shop Name *</label>
+        <input type="text" id="sh-name" placeholder="Dealer name"/>
+      </div>
+      <div class="form-group">
+        <label>Static IP Address *</label>
+        <input type="text" id="sh-ip" placeholder="74.124.170.65"/>
+      </div>
+      <div class="form-group">
+        <label>Contact Name</label>
+        <input type="text" id="sh-contact" placeholder="Service Manager"/>
+      </div>
+      <div class="form-group">
+        <label>Contact Email</label>
+        <input type="email" id="sh-email" placeholder="manager@dealer.com"/>
+      </div>
+      <div class="form-group">
+        <label>Contact Phone</label>
+        <input type="tel" id="sh-phone" placeholder="(555) 000-0000"/>
+      </div>
+      <div class="form-group">
+        <label>Plan</label>
+        <select id="sh-plan">
+          <option value="monthly">Monthly</option>
+          <option value="annual">Annual</option>
+        </select>
+      </div>
+      <div class="form-group full">
+        <label>Notes</label>
+        <textarea id="sh-notes" placeholder="Internal notes..."></textarea>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-shop')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveShop()">Add Shop</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD RULE MODAL -->
+<div class="modal-overlay" id="modal-rule">
+  <div class="modal">
+    <div class="modal-title" id="rule-modal-title">Add New Rule</div>
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Rule Name *</label>
+        <input type="text" id="rule-name" placeholder="e.g. Warning Light → DTC Required"/>
+      </div>
+      <div class="form-group">
+        <label>Trigger Section</label>
+        <select id="rule-trigger-section">
+          <option value="complaint">Complaint</option>
+          <option value="cause">Cause</option>
+          <option value="correction">Correction</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Target Section</label>
+        <select id="rule-target-section">
+          <option value="complaint">Complaint</option>
+          <option value="cause">Cause</option>
+          <option value="correction">Correction</option>
+        </select>
+      </div>
+      <div class="form-group full">
+        <label>Trigger Condition</label>
+        <input type="text" id="rule-condition" placeholder="e.g. warning_light_mentioned"/>
+      </div>
+      <div class="form-group full">
+        <label>Question to Force</label>
+        <textarea id="rule-question" placeholder="What question should be asked?"></textarea>
+      </div>
+      <div class="form-group full">
+        <label>Notes</label>
+        <textarea id="rule-notes" placeholder="Internal notes about this rule..."></textarea>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-rule')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRule()">Save Rule</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────
+const SUPABASE_URL  = 'https://duxrtvclkyzcrmdbhmai.supabase.co';
+const SUPABASE_KEY  = 'sb_publishable_qkimjfIJbCKdO0IrNcip_Q_nslQcFAe';
+const TEMP_PASSWORD  = 'CCC-Admin-2026!';
+
+// ── AUTH ─────────────────────────────────────────────────────
+function getPassword() {
+  return localStorage.getItem('ccc-admin-pw') || TEMP_PASSWORD;
+}
+
+function isFirstLogin() {
+  return !localStorage.getItem('ccc-admin-pw');
+}
+
+function doLogin() {
+  const pw = document.getElementById('pw-input').value;
+  const err = document.getElementById('login-error');
+  if (pw === getPassword()) {
+    err.style.display = 'none';
+    if (isFirstLogin()) {
+      // Force password reset on first login
+      showResetPrompt();
+    } else {
+      completeLogin();
+    }
+  } else {
+    err.textContent = 'Incorrect password';
+    err.style.display = 'block';
+  }
+}
+
+function showResetPrompt() {
+  document.getElementById('login-screen').innerHTML = `
+    <div class="login-box">
+      <div class="login-logo">CCC CO-PILOT</div>
+      <div class="login-sub" style="color:var(--amber);margin-bottom:24px;">Set your permanent password</div>
+      <input type="password" id="new-pw1" placeholder="New password" style="margin-bottom:10px;"/>
+      <input type="password" id="new-pw2" placeholder="Confirm new password" style="margin-bottom:12px;"/>
+      <button class="login-btn" onclick="saveNewPassword()">Set Password & Sign In</button>
+      <div class="login-error" id="reset-error"></div>
+    </div>
+  `;
+}
+
+function saveNewPassword() {
+  const pw1 = document.getElementById('new-pw1').value;
+  const pw2 = document.getElementById('new-pw2').value;
+  const err = document.getElementById('reset-error');
+  if (pw1.length < 8) {
+    err.textContent = 'Password must be at least 8 characters';
+    err.style.display = 'block'; return;
+  }
+  if (pw1 !== pw2) {
+    err.textContent = 'Passwords do not match';
+    err.style.display = 'block'; return;
+  }
+  localStorage.setItem('ccc-admin-pw', pw1);
+  completeLogin();
+}
+
+function completeLogin() {
+  sessionStorage.setItem('ccc-admin-auth', '1');
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  loadAll();
+}
+
+function doLogout() {
+  sessionStorage.removeItem('ccc-admin-auth');
+  location.reload();
+}
+
+// Check if already logged in
+if (sessionStorage.getItem('ccc-admin-auth') === '1') {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+}
+
+// ── SUPABASE HELPER ──────────────────────────────────────────
+async function sb(path, method='GET', body=null) {
+  const opts = {
+    method,
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': method === 'POST' ? 'return=representation' : '',
+    }
+  };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, opts);
+  if (method === 'DELETE' || res.status === 204) return null;
+  return res.json();
+}
+
+// ── TABS ─────────────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`tab-${name}`).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'stats')  loadStats();
+  if (name === 'shops')  loadShops();
+  if (name === 'logs')   loadLogs();
+  if (name === 'rules')  loadRules();
+}
+
+function loadAll() {
+  loadStats();
+  loadShops();
+}
+
+// ── STATS ────────────────────────────────────────────────────
+async function loadStats() {
+  const [shops, logs] = await Promise.all([
+    sb('shops?select=id,status'),
+    sb('usage_logs?select=id,tokens_used,created_at'),
+  ]);
+
+  const active   = shops.filter(s => s.status === 'active').length;
+  const total    = shops.length;
+  const calls    = logs.length;
+  const tokens   = logs.reduce((a,l) => a + (l.tokens_used||0), 0);
+  const cost     = ((tokens / 1000000) * 3).toFixed(2);
+
+  const today = new Date().toDateString();
+  const todayCalls = logs.filter(l => new Date(l.created_at).toDateString() === today).length;
+
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-value">${active}</div>
+      <div class="stat-label">Active Shops</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${total}</div>
+      <div class="stat-label">Total Shops</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${calls}</div>
+      <div class="stat-label">Total API Calls</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${todayCalls}</div>
+      <div class="stat-label">Calls Today</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${(tokens/1000).toFixed(1)}k</div>
+      <div class="stat-label">Total Tokens Used</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">$${cost}</div>
+      <div class="stat-label">Est. API Cost</div>
+    </div>
+  `;
+}
+
+// ── SHOPS ────────────────────────────────────────────────────
+async function loadShops() {
+  const shops = await sb('shops?select=*&order=created_at.desc');
+  const tbody = document.getElementById('shops-tbody');
+
+  if (!shops || shops.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty">No shops yet. Add one to get started.</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = shops.map(s => `
+    <tr>
+      <td><strong>${s.name}</strong></td>
+      <td style="font-family:monospace;font-size:12px;">${s.ip_address}</td>
+      <td><span class="badge badge-${s.status === 'active' ? 'active' : 'inactive'}">
+        ${s.status === 'active' ? '● Active' : '○ Inactive'}
+      </span></td>
+      <td style="color:var(--text2);font-size:12px;">${s.plan}</td>
+      <td style="color:var(--text2);font-size:12px;">${s.contact_name || '—'}</td>
+      <td style="color:var(--text3);font-size:12px;">${new Date(s.created_at).toLocaleDateString()}</td>
+      <td>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-ghost" onclick="toggleShop('${s.id}','${s.status}')">
+            ${s.status === 'active' ? 'Deactivate' : 'Activate'}
+          </button>
+          <button class="btn btn-ghost" style="color:var(--red);border-color:var(--red-dim);" 
+            onclick="deleteShop('${s.id}','${s.name}')">Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function toggleShop(id, currentStatus) {
+  const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+  await sb(`shops?id=eq.${id}`, 'PATCH', { status: newStatus });
+  loadShops();
+  loadStats();
+}
+
+async function deleteShop(id, name) {
+  if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+  await sb(`shops?id=eq.${id}`, 'DELETE');
+  loadShops();
+  loadStats();
+}
+
+function openAddShop() {
+  ['sh-name','sh-ip','sh-contact','sh-email','sh-phone','sh-notes'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('modal-shop').classList.add('open');
+}
+
+async function saveShop() {
+  const name = document.getElementById('sh-name').value.trim();
+  const ip   = document.getElementById('sh-ip').value.trim();
+  if (!name || !ip) { alert('Shop name and IP address are required.'); return; }
+
+  await sb('shops', 'POST', {
+    name,
+    ip_address: ip,
+    contact_name:  document.getElementById('sh-contact').value.trim() || null,
+    contact_email: document.getElementById('sh-email').value.trim()   || null,
+    contact_phone: document.getElementById('sh-phone').value.trim()   || null,
+    plan:          document.getElementById('sh-plan').value,
+    notes:         document.getElementById('sh-notes').value.trim()   || null,
+    status: 'active',
+  });
+
+  closeModal('modal-shop');
+  loadShops();
+  loadStats();
+}
+
+// ── LOGS ─────────────────────────────────────────────────────
+async function loadLogs() {
+  const logs = await sb('usage_logs?select=*,shops(name)&order=created_at.desc&limit=100');
+  const tbody = document.getElementById('logs-tbody');
+
+  if (!logs || logs.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty">No logs yet.</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = logs.map(l => `
+    <tr>
+      <td style="color:var(--text3);font-size:12px;white-space:nowrap;">
+        ${new Date(l.created_at).toLocaleString()}
+      </td>
+      <td style="font-size:13px;">${l.shops?.name || '—'}</td>
+      <td style="font-family:monospace;font-size:11px;color:var(--text2);">${l.ip_address}</td>
+      <td><span class="badge badge-${l.section === 'complaint' ? 'active' : l.section === 'cause' ? 'off' : 'inactive'}" style="font-size:10px;">
+        ${l.section || '—'}
+      </span></td>
+      <td class="log-text">${l.complaint_text || '—'}</td>
+      <td class="token-count">${l.tokens_used ? l.tokens_used.toLocaleString() : '—'}</td>
+    </tr>
+  `).join('');
+}
+
+// ── RULES ────────────────────────────────────────────────────
+let editingRuleId = null;
+
+async function loadRules() {
+  const rules = await sb('rules?select=*&order=trigger_section,priority');
+  const container = document.getElementById('rules-list');
+
+  if (!rules || rules.length === 0) {
+    container.innerHTML = `<div class="empty">No rules yet.</div>`;
+    return;
+  }
+
+  container.innerHTML = rules.map(r => `
+    <div class="card" style="margin-bottom:12px;">
+      <div class="card-header">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <label class="toggle">
+            <input type="checkbox" ${r.active ? 'checked' : ''} onchange="toggleRule('${r.id}',this.checked)"/>
+            <span class="toggle-slider"></span>
+          </label>
+          <div>
+            <div style="font-weight:600;font-size:14px;">${r.name}</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px;">
+              ${r.trigger_section} → ${r.target_section} · priority ${r.priority}
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-ghost" onclick="openEditRule(${JSON.stringify(r).replace(/"/g,'&quot;')})">Edit</button>
+          <button class="btn btn-ghost" style="color:var(--red);border-color:var(--red-dim);" 
+            onclick="deleteRule('${r.id}','${r.name.replace(/'/g,"\\'")}')">Delete</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">
+          <strong style="color:var(--text3);">Trigger:</strong> ${r.trigger_condition}
+        </div>
+        ${r.question_to_force ? `
+        <div style="font-size:13px;color:var(--text);background:var(--bg2);border-radius:8px;padding:10px 14px;border-left:3px solid var(--amber);">
+          "${r.question_to_force}"
+        </div>` : `
+        <div style="font-size:12px;color:var(--text3);font-style:italic;">Suppression rule — no question forced</div>`}
+        ${r.notes ? `<div style="font-size:11px;color:var(--text3);margin-top:8px;">${r.notes}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function toggleRule(id, active) {
+  await sb(`rules?id=eq.${id}`, 'PATCH', { active });
+}
+
+async function deleteRule(id, name) {
+  if (!confirm(`Delete rule "${name}"?`)) return;
+  await sb(`rules?id=eq.${id}`, 'DELETE');
+  loadRules();
+}
+
+function openAddRule() {
+  editingRuleId = null;
+  document.getElementById('rule-modal-title').textContent = 'Add New Rule';
+  ['rule-name','rule-condition','rule-question','rule-notes'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('modal-rule').classList.add('open');
+}
+
+function openEditRule(rule) {
+  editingRuleId = rule.id;
+  document.getElementById('rule-modal-title').textContent = 'Edit Rule';
+  document.getElementById('rule-name').value      = rule.name || '';
+  document.getElementById('rule-condition').value = rule.trigger_condition || '';
+  document.getElementById('rule-question').value  = rule.question_to_force || '';
+  document.getElementById('rule-notes').value     = rule.notes || '';
+  document.getElementById('rule-trigger-section').value = rule.trigger_section || 'complaint';
+  document.getElementById('rule-target-section').value  = rule.target_section  || 'cause';
+  document.getElementById('modal-rule').classList.add('open');
+}
+
+async function saveRule() {
+  const name = document.getElementById('rule-name').value.trim();
+  if (!name) { alert('Rule name is required.'); return; }
+
+  const payload = {
+    name,
+    trigger_section: document.getElementById('rule-trigger-section').value,
+    target_section:  document.getElementById('rule-target-section').value,
+    trigger_condition: document.getElementById('rule-condition').value.trim(),
+    question_to_force: document.getElementById('rule-question').value.trim() || null,
+    notes: document.getElementById('rule-notes').value.trim() || null,
+  };
+
+  if (editingRuleId) {
+    await sb(`rules?id=eq.${editingRuleId}`, 'PATCH', payload);
+  } else {
+    await sb('rules', 'POST', payload);
+  }
+
+  closeModal('modal-rule');
+  loadRules();
+}
+
+// ── HELPERS ──────────────────────────────────────────────────
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// Close modal on overlay click
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.classList.remove('open');
+  });
+});
+
+// Auto-load if already authenticated
+if (sessionStorage.getItem('ccc-admin-auth') === '1') {
+  loadAll();
+}
+</script>
+</body>
+</html>
