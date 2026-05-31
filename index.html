@@ -377,6 +377,35 @@ textarea { resize:vertical; min-height:80px; }
   </div>
 </div>
 
+
+<!-- RESET PIN MODAL -->
+<div class="modal-overlay" id="modal-reset-pin">
+  <div class="modal">
+    <div class="modal-title">Reset Billing PIN</div>
+    <div id="reset-pin-shop-name" style="font-size:13px;color:var(--muted);margin-bottom:20px;"></div>
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>New 4-Digit PIN</label>
+        <input type="password" id="reset-pin-input" maxlength="4" inputmode="numeric"
+          placeholder="Enter new 4-digit PIN"
+          oninput="this.value=this.value.replace(/[^0-9]/g,'')"/>
+      </div>
+      <div class="form-group full">
+        <label>Confirm New PIN</label>
+        <input type="password" id="reset-pin-confirm" maxlength="4" inputmode="numeric"
+          placeholder="Confirm new PIN"
+          oninput="this.value=this.value.replace(/[^0-9]/g,'')"/>
+      </div>
+    </div>
+    <div id="reset-pin-error" style="color:var(--red);font-size:12px;margin-top:8px;display:none;"></div>
+    <div id="reset-pin-success" style="color:var(--green);font-size:12px;margin-top:8px;display:none;">PIN updated successfully.</div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-reset-pin')">Cancel</button>
+      <button class="btn btn-primary" onclick="doResetPin()">Reset PIN</button>
+    </div>
+  </div>
+</div>
+
 <!-- ADD SHOP MODAL -->
 <div class="modal-overlay" id="modal-shop">
   <div class="modal">
@@ -644,10 +673,12 @@ async function loadShops() {
       <td style="color:var(--text2);font-size:12px;">${s.contact_name || '—'}</td>
       <td style="color:var(--text3);font-size:12px;">${new Date(s.created_at).toLocaleDateString()}</td>
       <td>
-        <div style="display:flex;gap:6px;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button class="btn btn-ghost" onclick="toggleShop('${s.id}','${s.status}')">
             ${s.status === 'active' ? 'Deactivate' : 'Activate'}
           </button>
+          <button class="btn btn-ghost" style="color:var(--blue);border-color:rgba(107,127,215,0.3);"
+            onclick="openResetPin('${s.id}','${s.name}')">Reset PIN</button>
           <button class="btn btn-ghost" style="color:var(--red);border-color:var(--red-dim);" 
             onclick="deleteShop('${s.id}','${s.name}')">Delete</button>
         </div>
@@ -824,6 +855,64 @@ async function saveRule() {
 
   closeModal('modal-rule');
   loadRules();
+}
+
+
+// ── RESET BILLING PIN ─────────────────────────────────────────
+let resetPinShopId = null;
+
+function openResetPin(shopId, shopName) {
+  resetPinShopId = shopId;
+  document.getElementById('reset-pin-shop-name').textContent = `Shop: ${shopName}`;
+  document.getElementById('reset-pin-input').value = '';
+  document.getElementById('reset-pin-confirm').value = '';
+  document.getElementById('reset-pin-error').style.display = 'none';
+  document.getElementById('reset-pin-success').style.display = 'none';
+  document.getElementById('modal-reset-pin').classList.add('open');
+}
+
+async function doResetPin() {
+  const pin     = document.getElementById('reset-pin-input').value.trim();
+  const confirm = document.getElementById('reset-pin-confirm').value.trim();
+  const err     = document.getElementById('reset-pin-error');
+  const ok      = document.getElementById('reset-pin-success');
+
+  err.style.display = 'none';
+  ok.style.display  = 'none';
+
+  if (!/^[0-9]{4}$/.test(pin)) {
+    err.textContent = 'PIN must be exactly 4 digits.';
+    err.style.display = 'block'; return;
+  }
+  if (pin !== confirm) {
+    err.textContent = 'PINs do not match.';
+    err.style.display = 'block'; return;
+  }
+
+  // Hash the PIN client-side (same salt as Worker)
+  const pinHash = await hashPin(pin);
+
+  const { error } = await sb
+    .from('shops')
+    .update({ billing_pin: pinHash })
+    .eq('id', resetPinShopId);
+
+  if (error) {
+    err.textContent = 'Failed to update PIN: ' + error.message;
+    err.style.display = 'block'; return;
+  }
+
+  ok.style.display = 'block';
+  setTimeout(() => closeModal('modal-reset-pin'), 1500);
+}
+
+async function hashPin(pin) {
+  const buf = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(pin + 'ccc-copilot-salt')
+  );
+  return Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 // ── CHANGE PASSWORD ──────────────────────────────────────────
