@@ -506,6 +506,11 @@ textarea { resize:vertical; min-height:80px; }
         <textarea id="rule-question" placeholder="What question should be asked?"></textarea>
       </div>
       <div class="form-group full">
+        <label>Rewrite Instruction (optional)</label>
+        <textarea id="rule-rewrite" placeholder="e.g. Do not end the correction with a sentence restating the root cause."></textarea>
+        <small style="color:var(--muted);font-size:11px;margin-top:4px;display:block;">Injected into the rewrite prompt when this rule's condition is triggered.</small>
+      </div>
+      <div class="form-group full">
         <label>Notes</label>
         <textarea id="rule-notes" placeholder="Internal notes about this rule..."></textarea>
       </div>
@@ -867,8 +872,9 @@ async function saveRule() {
     trigger_section: document.getElementById('rule-trigger-section').value,
     target_section:  document.getElementById('rule-target-section').value,
     trigger_condition: document.getElementById('rule-condition').value.trim(),
-    question_to_force: document.getElementById('rule-question').value.trim() || null,
-    notes: document.getElementById('rule-notes').value.trim() || null,
+    question_to_force:   document.getElementById('rule-question').value.trim() || null,
+    rewrite_instruction: document.getElementById('rule-rewrite').value.trim() || null,
+    notes:               document.getElementById('rule-notes').value.trim() || null,
   };
 
   if (editingRuleId) {
