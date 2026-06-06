@@ -913,14 +913,15 @@ async function loadActivity() {
     container.innerHTML = '<div style="color:var(--text3);font-size:13px;">No shops found</div>';
     return;
   }
-  container.innerHTML = shops.map(s => `
-    <div class="activity-shop-row" id="asr-${s.id}"
-      onclick="selectActivityShop('${s.id}','${(s.name||'').replace(/'/g,\"\\'\")}' )"
+  container.innerHTML = shops.map(s => {
+    const safeName = (s.name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return `<div class="activity-shop-row" id="asr-${s.id}"
+      onclick="selectActivityShop('${s.id}','${safeName}')"
       style="cursor:pointer;padding:10px 12px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-weight:600;transition:all .15s;">
       <div style="color:var(--text);margin-bottom:2px;">${s.name||'Unnamed'}</div>
       <div style="font-size:11px;color:${s.status==='active'?'var(--green)':'var(--text3)'};">${s.status||'unknown'}</div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
   if (activitySelectedShop) selectActivityShop(activitySelectedShop.id, activitySelectedShop.name, true);
 }
 
