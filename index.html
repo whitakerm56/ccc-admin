@@ -907,9 +907,21 @@ let activitySelectedShop = null;
 let activitySelectedVin  = null;
 
 async function loadActivity() {
-  const shops = await sb('shops?select=id,name,status&order=name');
   const container = document.getElementById('activity-shops');
-  if (!shops || !shops.length) {
+  if (!container) return;
+  container.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0;">Loading...</div>';
+  let shops;
+  try {
+    shops = await sb('shops?select=id,name,status&order=name');
+  } catch(e) {
+    container.innerHTML = `<div style="color:var(--red);font-size:13px;">Error: ${e.message}</div>`;
+    return;
+  }
+  if (!shops || shops.error) {
+    container.innerHTML = `<div style="color:var(--red);font-size:13px;">${shops?.message || shops?.error || 'Failed to load shops'}</div>`;
+    return;
+  }
+  if (!shops.length) {
     container.innerHTML = '<div style="color:var(--text3);font-size:13px;">No shops found</div>';
     return;
   }
@@ -933,10 +945,12 @@ async function selectActivityShop(shopId, shopName, silent) {
   if (row) row.style.background = 'var(--amber-dim)';
   document.getElementById('activity-vins').innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0;">Loading...</div>';
   document.getElementById('activity-detail').innerHTML = '<div style="color:var(--text3);font-size:13px;padding:12px 0;">Select a VIN</div>';
-  const sessions = await sb(`sessions?select=vin,vehicle_info,created_at&shop_id=eq.${shopId}&order=created_at.desc`);
+  let sessions;
+  try { sessions = await sb(`sessions?select=vin,vehicle_info,created_at&shop_id=eq.${shopId}&order=created_at.desc`); }
+  catch(e) { sessions = null; }
   const vinContainer = document.getElementById('activity-vins');
-  if (!sessions || !sessions.length) {
-    vinContainer.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0;">No sessions for this shop</div>';
+  if (!sessions || sessions.error || !sessions.length) {
+    vinContainer.innerHTML = `<div style="color:var(--text3);font-size:13px;padding:8px 0;">${sessions?.message || 'No sessions for this shop'}</div>`;
     return;
   }
   const seen = new Set();
@@ -962,9 +976,11 @@ async function selectActivityVin(shopId, vin) {
   if (row) row.style.background = 'var(--blue-dim)';
   const detail = document.getElementById('activity-detail');
   detail.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0;">Loading...</div>';
-  const sessions = await sb(`sessions?select=*&shop_id=eq.${shopId}&vin=eq.${vin}&order=created_at.asc`);
-  if (!sessions || !sessions.length) {
-    detail.innerHTML = '<div style="color:var(--text3);font-size:13px;">No sessions found</div>';
+  let sessions;
+  try { sessions = await sb(`sessions?select=*&shop_id=eq.${shopId}&vin=eq.${vin}&order=created_at.asc`); }
+  catch(e) { sessions = null; }
+  if (!sessions || sessions.error || !sessions.length) {
+    detail.innerHTML = `<div style="color:var(--text3);font-size:13px;">${sessions?.message || 'No sessions found'}</div>`;
     return;
   }
   const html = sessions.map(s => {
