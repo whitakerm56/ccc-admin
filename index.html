@@ -318,6 +318,7 @@ textarea { resize:vertical; min-height:80px; }
     <button class="nav-btn" onclick="showTab('logs')">📋 Usage Logs</button>
     <button class="nav-btn" onclick="showTab('rules')">⚙️ Rules</button>
     <button class="nav-btn" onclick="showTab('activity')">🔍 Activity Feed</button>
+    <button class="nav-btn" onclick="showTab('diagnostics')">🧪 Prompt Diagnostics</button>
   </div>
   <div class="main">
 
@@ -410,6 +411,38 @@ textarea { resize:vertical; min-height:80px; }
         <div class="loading"><div class="spin"></div></div>
       </div>
     </div>
+
+
+  <!-- PROMPT DIAGNOSTICS TAB -->
+  <div class="tab-content" id="tab-diagnostics">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Prompt Diagnostics</div>
+        <div class="section-sub">Full question generation flow — what was generated, what was answered, what was skipped</div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <select id="diag-days" onchange="loadDiagnostics()"
+          style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:13px;padding:7px 10px;outline:none;font-family:var(--sans);cursor:pointer;">
+          <option value="1">Today</option>
+          <option value="7" selected>Last 7 days</option>
+          <option value="30">Last 30 days</option>
+          <option value="9999">All time</option>
+        </select>
+        <select id="diag-section" onchange="loadDiagnostics()"
+          style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:13px;padding:7px 10px;outline:none;font-family:var(--sans);cursor:pointer;">
+          <option value="">All sections</option>
+          <option value="complaint">Complaint</option>
+          <option value="cause">Cause</option>
+          <option value="correction">Correction</option>
+        </select>
+        <button class="btn btn-ghost" onclick="loadDiagnostics()">↻ Refresh</button>
+        <button class="btn btn-ghost" id="diag-copy-btn" onclick="copyDiagnostics()" style="margin-left:4px;">📋 Copy for Review</button>
+      </div>
+    </div>
+    <div id="diag-container">
+      <div class="loading"><div class="spin"></div></div>
+    </div>
+  </div>
 
   <!-- ACTIVITY FEED TAB -->
     <div class="tab-content" id="tab-activity">
@@ -748,7 +781,8 @@ function showTab(name) {
   if (name === 'shops')  loadShops();
   if (name === 'logs')   loadLogs();
   if (name === 'rules')    loadRules();
-  if (name === 'activity') loadActivity();
+  if (name === 'activity')    loadActivity();
+  if (name === 'diagnostics') loadDiagnostics();
 }
 
 function loadAll() {
@@ -983,6 +1017,197 @@ async function copyLogsForReview() {
   }, 2500);
 }
 
+
+
+// ── PROMPT DIAGNOSTICS ───────────────────────────────────────
+let diagData = [];
+
+async function loadDiagnostics() {
+  const container = document.getElementById('diag-container');
+  if (!container) return;
+  container.innerHTML = '<div class="loading"><div class="spin"></div></div>';
+
+  const days    = document.getElementById('diag-days')?.value || '7';
+  const section = document.getElementById('diag-section')?.value || '';
+
+  let url = `/admin/diagnostics?days=${days}`;
+  if (section) url += `&section=${section}`;
+
+  let data;
+  try { data = await adminFetch(url); }
+  catch(e) {
+    container.innerHTML = `<div style="color:var(--red);font-size:13px;padding:16px;">Error: ${e.message}</div>`;
+    return;
+  }
+
+  if (!Array.isArray(data) || !data.length) {
+    container.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:16px;">No diagnostic data for this period. Run some analyses first.</div>';
+    return;
+  }
+
+  diagData = data;
+  renderDiagnostics(data);
+}
+
+function renderDiagnostics(data) {
+  const container = document.getElementById('diag-container');
+  const sectionColor = { complaint: 'var(--orange)', cause: 'var(--blue)', correction: 'var(--green)' };
+  const sectionLabel = { complaint: 'COMPLAINT', cause: 'CAUSE', correction: 'CORRECTION' };
+
+  const fmtDt = iso => {
+    if (!iso) return '';
+    return new Date(iso).toLocaleString();
+  };
+
+  const html = data.map(s => {
+    const section  = (s.section_analyzed || 'complaint').toLowerCase();
+    const color    = sectionColor[section] || 'var(--text3)';
+    const label    = sectionLabel[section] || section.toUpperCase();
+    const text     = section === 'complaint' ? s.complaint : section === 'cause' ? s.cause : s.correction;
+
+    // Build answered map from qa_log
+    const answeredMap = {};
+    let qaLog = [];
+    try { qaLog = Array.isArray(s.qa_log) ? s.qa_log : (s.qa_log ? JSON.parse(s.qa_log) : []); } catch(e){}
+    qaLog.forEach(qa => { if (qa.question) answeredMap[qa.question.trim()] = qa.answer; });
+
+    // All generated questions
+    let generated = [];
+    try { generated = Array.isArray(s.questions_generated) ? s.questions_generated : (s.questions_generated ? JSON.parse(s.questions_generated) : []); } catch(e){}
+
+    const hasGenerated = generated.length > 0;
+    const answeredCount = generated.filter(q => answeredMap[q.trim()] !== undefined).length;
+    const skippedCount  = generated.length - answeredCount;
+
+    // Question rows
+    const qRows = generated.map(q => {
+      const ans = answeredMap[q.trim()];
+      const answered = ans !== undefined;
+      return `<div style="display:flex;gap:10px;padding:8px 10px;border-radius:6px;background:var(--bg2);margin-bottom:6px;align-items:flex-start;">
+        <span style="font-size:14px;flex-shrink:0;margin-top:1px;">${answered ? '✅' : '⬜'}</span>
+        <div style="flex:1;">
+          <div style="font-size:13px;color:${answered ? 'var(--text)' : 'var(--text3)'};line-height:1.5;">${q}</div>
+          ${answered ? `<div style="font-size:12px;color:var(--orange);margin-top:4px;font-weight:600;">A: ${ans}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+
+    // Also show any answered Q&A not in generated (e.g. from prior session carry-over)
+    const extraQA = qaLog.filter(qa => qa.question && !generated.includes(qa.question.trim()));
+    const extraRows = extraQA.map(qa => `
+      <div style="display:flex;gap:10px;padding:8px 10px;border-radius:6px;background:var(--bg2);margin-bottom:6px;align-items:flex-start;border:1px dashed var(--border2);">
+        <span style="font-size:14px;flex-shrink:0;margin-top:1px;">✅</span>
+        <div style="flex:1;">
+          <div style="font-size:11px;color:var(--text3);margin-bottom:2px;">From prior session</div>
+          <div style="font-size:13px;color:var(--text);line-height:1.5;">${qa.question}</div>
+          <div style="font-size:12px;color:var(--orange);margin-top:4px;font-weight:600;">A: ${qa.answer}</div>
+        </div>
+      </div>`).join('');
+
+    return `<div style="margin-bottom:16px;background:var(--card);border:1px solid var(--border);border-left:3px solid ${color};border-radius:8px;overflow:hidden;">
+
+      <!-- Card header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span style="font-family:var(--font-cond);font-size:11px;font-weight:700;letter-spacing:.1em;color:${color};">${label}</span>
+          <span style="font-family:var(--font);font-size:11px;color:var(--orange);">${s.vin || '—'}</span>
+          <span style="font-size:12px;color:var(--text2);">${s.vehicle_info || ''}</span>
+          <span style="font-size:11px;color:var(--text3);">${s.shop_name || ''}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          ${hasGenerated ? `<span style="font-size:11px;color:var(--green);">✅ ${answeredCount} answered</span>
+          <span style="font-size:11px;color:var(--text3);">⬜ ${skippedCount} skipped</span>` : ''}
+          <span style="font-size:11px;color:var(--text3);">${fmtDt(s.created_at)}</span>
+        </div>
+      </div>
+
+      <!-- CCC text submitted -->
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">Text Submitted</div>
+        <div style="font-size:13px;color:var(--text2);line-height:1.6;">${text || '<span style="color:var(--text3);font-style:italic;">empty</span>'}</div>
+      </div>
+
+      <!-- Questions -->
+      ${hasGenerated || extraRows ? `<div style="padding:12px 16px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">
+          Questions Generated ${hasGenerated ? `(${generated.length} total)` : ''}
+        </div>
+        ${qRows}
+        ${extraRows}
+      </div>` : `<div style="padding:12px 16px;color:var(--text3);font-size:13px;font-style:italic;">No question data — this session predates the questions_generated column.</div>`}
+
+    </div>`;
+  }).join('');
+
+  container.innerHTML = `<div style="font-size:12px;color:var(--text3);margin-bottom:16px;">${data.length} sessions found</div>` + html;
+}
+
+async function copyDiagnostics() {
+  if (!diagData.length) { alert('Load diagnostics first'); return; }
+  const btn = document.getElementById('diag-copy-btn');
+  btn.textContent = 'Building...';
+  btn.disabled = true;
+
+  const lines = [];
+  lines.push('CCC CO-PILOT — PROMPT DIAGNOSTICS REVIEW');
+  lines.push('Generated: ' + new Date().toLocaleString());
+  lines.push('Entries: ' + diagData.length);
+  lines.push('='.repeat(60));
+  lines.push('');
+
+  diagData.forEach((s, i) => {
+    const section = (s.section_analyzed || '').toUpperCase();
+    const text    = s.section_analyzed === 'complaint' ? s.complaint : s.section_analyzed === 'cause' ? s.cause : s.correction;
+    let qaLog = [];
+    try { qaLog = Array.isArray(s.qa_log) ? s.qa_log : (s.qa_log ? JSON.parse(s.qa_log) : []); } catch(e){}
+    const answeredMap = {};
+    qaLog.forEach(qa => { if (qa.question) answeredMap[qa.question.trim()] = qa.answer; });
+    let generated = [];
+    try { generated = Array.isArray(s.questions_generated) ? s.questions_generated : (s.questions_generated ? JSON.parse(s.questions_generated) : []); } catch(e){}
+
+    lines.push(`ENTRY ${i+1} — ${new Date(s.created_at).toLocaleString()}`);
+    lines.push(`Shop:     ${s.shop_name || 'Unknown'}`);
+    lines.push(`VIN:      ${s.vin || '—'}  ${s.vehicle_info || ''}`);
+    lines.push(`Section:  ${section}`);
+    lines.push(`Text:     ${text || '(empty)'}`);
+    if (generated.length) {
+      lines.push('');
+      lines.push('Questions generated:');
+      generated.forEach((q, qi) => {
+        const ans = answeredMap[q.trim()];
+        lines.push(`  ${ans !== undefined ? '✅' : '⬜'} Q${qi+1}: ${q}`);
+        if (ans !== undefined) lines.push(`     A: ${ans}`);
+      });
+    }
+    lines.push('-'.repeat(60));
+    lines.push('');
+  });
+
+  lines.push('---');
+  lines.push('Paste this into Claude and say: Review these CCC Co-Pilot prompt diagnostics. Identify questions that are frequently skipped, misplaced, or could be improved. Suggest any new Rules to add in the admin Rules tab.');
+
+  const text = lines.join('\n');
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch(e) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+  btn.textContent = '✅ Copied!';
+  btn.style.color = 'var(--green)';
+  btn.style.borderColor = 'var(--green)';
+  setTimeout(() => {
+    btn.textContent = '📋 Copy for Review';
+    btn.style.color = '';
+    btn.style.borderColor = '';
+    btn.disabled = false;
+  }, 2500);
+}
 
 // ── ACTIVITY FEED ────────────────────────────────────────────
 let activitySelectedShop = null;
