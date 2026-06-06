@@ -623,6 +623,7 @@ textarea { resize:vertical; min-height:80px; }
       <div class="form-group">
         <label>Trigger Section</label>
         <select id="rule-trigger-section">
+          <option value="all">All Sections</option>
           <option value="complaint">Complaint</option>
           <option value="cause">Cause</option>
           <option value="correction">Correction</option>
@@ -631,6 +632,7 @@ textarea { resize:vertical; min-height:80px; }
       <div class="form-group">
         <label>Target Section</label>
         <select id="rule-target-section">
+          <option value="all">All Sections</option>
           <option value="complaint">Complaint</option>
           <option value="cause">Cause</option>
           <option value="correction">Correction</option>
@@ -652,6 +654,21 @@ textarea { resize:vertical; min-height:80px; }
       <div class="form-group full">
         <label>Notes</label>
         <textarea id="rule-notes" placeholder="Internal notes about this rule..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>Priority <span style="color:var(--text3);font-size:11px;font-weight:400;">(lower = runs first)</span></label>
+        <input type="number" id="rule-priority" value="10" min="1" max="100"
+          style="width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:13px;padding:8px 10px;outline:none;font-family:var(--sans);"
+          onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border2)'"/>
+      </div>
+      <div class="form-group" style="justify-content:flex-end;padding-top:8px;">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+          <label class="toggle" style="margin:0;">
+            <input type="checkbox" id="rule-active" checked/>
+            <span class="toggle-slider"></span>
+          </label>
+          <span style="font-size:13px;color:var(--text2);">Active</span>
+        </label>
       </div>
     </div>
     <div class="modal-actions">
@@ -1497,9 +1514,13 @@ async function deleteRule(id, name) {
 function openAddRule() {
   editingRuleId = null;
   document.getElementById('rule-modal-title').textContent = 'Add New Rule';
-  ['rule-name','rule-condition','rule-question','rule-notes'].forEach(id => {
+  ['rule-name','rule-condition','rule-question','rule-rewrite','rule-notes'].forEach(id => {
     document.getElementById(id).value = '';
   });
+  document.getElementById('rule-priority').value = '10';
+  document.getElementById('rule-active').checked = true;
+  document.getElementById('rule-trigger-section').value = 'all';
+  document.getElementById('rule-target-section').value = 'all';
   document.getElementById('modal-rule').classList.add('open');
 }
 
@@ -1512,6 +1533,9 @@ function openEditRule(rule) {
   document.getElementById('rule-notes').value     = rule.notes || '';
   document.getElementById('rule-trigger-section').value = rule.trigger_section || 'complaint';
   document.getElementById('rule-target-section').value  = rule.target_section  || 'cause';
+  document.getElementById('rule-priority').value         = rule.priority ?? 10;
+  document.getElementById('rule-active').checked         = rule.active !== false;
+  document.getElementById('rule-rewrite').value          = rule.rewrite_instruction || '';
   document.getElementById('modal-rule').classList.add('open');
 }
 
@@ -1521,12 +1545,14 @@ async function saveRule() {
 
   const payload = {
     name,
-    trigger_section: document.getElementById('rule-trigger-section').value,
-    target_section:  document.getElementById('rule-target-section').value,
-    trigger_condition: document.getElementById('rule-condition').value.trim(),
+    trigger_section:     document.getElementById('rule-trigger-section').value,
+    target_section:      document.getElementById('rule-target-section').value,
+    trigger_condition:   document.getElementById('rule-condition').value.trim(),
     question_to_force:   document.getElementById('rule-question').value.trim() || null,
     rewrite_instruction: document.getElementById('rule-rewrite').value.trim() || null,
     notes:               document.getElementById('rule-notes').value.trim() || null,
+    priority:            parseInt(document.getElementById('rule-priority').value) || 10,
+    active:              document.getElementById('rule-active').checked,
   };
 
   if (editingRuleId) {
