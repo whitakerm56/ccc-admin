@@ -433,15 +433,15 @@ textarea { resize:vertical; min-height:80px; }
             style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:13px;padding:7px 10px;outline:none;font-family:var(--sans);cursor:pointer;color-scheme:dark;"
             onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border2)'"/>
         </div>
-        <select id="diag-section" onchange="loadDiagnostics()"
+        <select id="diag-section"
           style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:13px;padding:7px 10px;outline:none;font-family:var(--sans);cursor:pointer;">
           <option value="">All sections</option>
           <option value="complaint">Complaint</option>
           <option value="cause">Cause</option>
           <option value="correction">Correction</option>
         </select>
-        <button class="btn btn-ghost" onclick="loadDiagnostics()">↻ Refresh</button>
-        <button class="btn btn-ghost" id="diag-copy-btn" onclick="copyDiagnostics()" style="margin-left:4px;">📋 Copy for Review</button>
+        <button class="btn btn-primary" onclick="loadDiagnostics()" style="padding:7px 18px;">Apply</button>
+        <button class="btn btn-ghost" id="diag-copy-btn" onclick="copyDiagnostics()">📋 Copy for Review</button>
       </div>
     </div>
     <div id="diag-container">
