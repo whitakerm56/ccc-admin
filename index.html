@@ -564,6 +564,8 @@ textarea { resize:vertical; min-height:80px; }
 // ── CONFIG ──────────────────────────────────────────────────
 const SUPABASE_URL  = 'https://duxrtvclkyzcrmdbhmai.supabase.co';
 const SUPABASE_KEY  = 'sb_publishable_qkimjfIJbCKdO0IrNcip_Q_nslQcFAe';
+const WORKER        = 'https://api.ccccopilot.com';
+const ADMIN_SECRET  = 'CCC-ADMIN-SECRET-2026';  // Must match ADMIN_SECRET in Worker env
 const TEMP_PASSWORD  = 'CCC-Admin-2026!';
 
 // ── AUTH ─────────────────────────────────────────────────────
@@ -653,6 +655,18 @@ async function sb(path, method='GET', body=null) {
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, opts);
   if (method === 'DELETE' || res.status === 204) return null;
+  return res.json();
+}
+
+// ── ADMIN WORKER FETCH ───────────────────────────────────────
+async function adminFetch(path) {
+  const res = await fetch(`${WORKER}${path}`, {
+    headers: { 'x-admin-secret': ADMIN_SECRET }
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
   return res.json();
 }
 
@@ -912,16 +926,12 @@ async function loadActivity() {
   container.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0;">Loading...</div>';
   let shops;
   try {
-    shops = await sb('shops?select=id,name,status&order=name');
+    shops = await adminFetch('/admin/shops');
   } catch(e) {
     container.innerHTML = `<div style="color:var(--red);font-size:13px;">Error: ${e.message}</div>`;
     return;
   }
-  if (!shops || shops.error) {
-    container.innerHTML = `<div style="color:var(--red);font-size:13px;">${shops?.message || shops?.error || 'Failed to load shops'}</div>`;
-    return;
-  }
-  if (!shops.length) {
+  if (!Array.isArray(shops) || !shops.length) {
     container.innerHTML = '<div style="color:var(--text3);font-size:13px;">No shops found</div>';
     return;
   }
@@ -946,12 +956,14 @@ async function selectActivityShop(shopId, shopName, silent) {
   document.getElementById('activity-vins').innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0;">Loading...</div>';
   document.getElementById('activity-detail').innerHTML = '<div style="color:var(--text3);font-size:13px;padding:12px 0;">Select a VIN</div>';
   let sessions;
-  try { sessions = await sb(`sessions?select=vin,vehicle_info,created_at&shop_id=eq.${shopId}&order=created_at.desc`); }
-  catch(e) { sessions = null; }
+  try { sessions = await adminFetch(`/admin/sessions?shop_id=${shopId}`); }
+  catch(e) {
+    document.getElementById('activity-vins').innerHTML = `<div style="color:var(--red);font-size:13px;padding:8px 0;">Error: ${e.message}</div>`;
+    return;
+  }
   const vinContainer = document.getElementById('activity-vins');
-  // Supabase returns array on success, object with .code on error
-  if (!sessions || !Array.isArray(sessions)) {
-    vinContainer.innerHTML = `<div style="color:var(--red);font-size:13px;padding:8px 0;">${sessions?.message || sessions?.code || 'Failed to load sessions'}</div>`;
+  if (!Array.isArray(sessions)) {
+    vinContainer.innerHTML = `<div style="color:var(--red);font-size:13px;padding:8px 0;">Unexpected response</div>`;
     return;
   }
   if (!sessions.length) {
@@ -982,10 +994,13 @@ async function selectActivityVin(shopId, vin) {
   const detail = document.getElementById('activity-detail');
   detail.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0;">Loading...</div>';
   let sessions;
-  try { sessions = await sb(`sessions?select=*&shop_id=eq.${shopId}&vin=eq.${encodeURIComponent(vin)}&order=created_at.asc`); }
-  catch(e) { sessions = null; }
-  if (!sessions || !Array.isArray(sessions)) {
-    detail.innerHTML = `<div style="color:var(--red);font-size:13px;">${sessions?.message || sessions?.code || 'Failed to load sessions'}</div>`;
+  try { sessions = await adminFetch(`/admin/sessions?shop_id=${shopId}&vin=${encodeURIComponent(vin)}`); }
+  catch(e) {
+    detail.innerHTML = `<div style="color:var(--red);font-size:13px;">Error: ${e.message}</div>`;
+    return;
+  }
+  if (!Array.isArray(sessions)) {
+    detail.innerHTML = `<div style="color:var(--red);font-size:13px;">Unexpected response</div>`;
     return;
   }
   if (!sessions.length) {
