@@ -415,7 +415,7 @@ textarea { resize:vertical; min-height:80px; }
 
   <!-- PROMPT DIAGNOSTICS TAB -->
   <div class="tab-content" id="tab-diagnostics">
-    <div class="section-header">
+    <div class="section-header" style="flex-wrap:wrap;gap:12px;">
       <div>
         <div class="section-title">Prompt Diagnostics</div>
         <div class="section-sub">Full question generation flow — what was generated, what was answered, what was skipped</div>
@@ -441,12 +441,38 @@ textarea { resize:vertical; min-height:80px; }
           <option value="correction">Correction</option>
         </select>
         <button class="btn btn-primary" onclick="loadDiagnostics()" style="padding:7px 18px;">Apply</button>
-        <button class="btn btn-ghost" id="diag-copy-btn" onclick="copyDiagnostics()">📋 Copy for Review</button>
       </div>
     </div>
+
+    <!-- Summary stats bar -->
+    <div id="diag-stats" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 20px;margin-bottom:16px;display:flex;gap:32px;align-items:center;flex-wrap:wrap;"></div>
+
+    <!-- Client-side filter bar -->
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+      <input id="diag-search" type="text" placeholder="Search VIN or shop..."
+        oninput="applyDiagFilters()"
+        style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:13px;padding:7px 10px;outline:none;font-family:var(--sans);width:220px;"
+        onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border2)'"/>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text2);">
+        <label class="toggle" style="margin:0;">
+          <input type="checkbox" id="diag-skipped-only" onchange="applyDiagFilters()"/>
+          <span class="toggle-slider"></span>
+        </label>
+        Skipped only
+      </label>
+      <span id="diag-count" style="font-size:12px;color:var(--text3);margin-left:4px;"></span>
+      <div style="margin-left:auto;display:flex;gap:8px;">
+        <button class="btn btn-ghost" id="diag-copy-btn" onclick="copyDiagnostics()">📋 Copy visible</button>
+        <button class="btn btn-ghost" id="diag-copy-skipped-btn" onclick="copyDiagnosticsSkipped()">📋 Copy skipped only</button>
+      </div>
+    </div>
+
     <div id="diag-container">
       <div class="loading"><div class="spin"></div></div>
     </div>
+
+    <!-- Pagination -->
+    <div id="diag-pagination" style="display:none;display:flex;justify-content:center;align-items:center;gap:12px;padding:20px 0;"></div>
   </div>
 
   <!-- ACTIVITY FEED TAB -->
@@ -1042,10 +1068,12 @@ async function copyLogsForReview() {
 
 
 // ── PROMPT DIAGNOSTICS ───────────────────────────────────────
-let diagData = [];
+let diagData        = [];   // full dataset from server
+let diagFiltered    = [];   // after client-side filters
+let diagPage        = 0;
+const DIAG_PER_PAGE = 25;
 
 function diagDefaultDates() {
-  // Set default date range: last 7 days
   const today = new Date();
   const week  = new Date(today);
   week.setDate(week.getDate() - 7);
@@ -1061,6 +1089,9 @@ async function loadDiagnostics() {
   const container = document.getElementById('diag-container');
   if (!container) return;
   container.innerHTML = '<div class="loading"><div class="spin"></div></div>';
+  document.getElementById('diag-stats').style.display = 'none';
+  document.getElementById('diag-pagination').style.display = 'none';
+  document.getElementById('diag-count').textContent = '';
 
   const fromVal = document.getElementById('diag-from')?.value || '';
   const toVal   = document.getElementById('diag-to')?.value   || '';
@@ -1077,121 +1108,225 @@ async function loadDiagnostics() {
   }
 
   if (!Array.isArray(data) || !data.length) {
-    container.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:16px;">No diagnostic data for this period. Run some analyses first.</div>';
+    container.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:16px;">No diagnostic data for this period.</div>';
     return;
   }
 
   diagData = data;
-  renderDiagnostics(data);
+
+  // Reset client filters
+  document.getElementById('diag-search').value = '';
+  document.getElementById('diag-skipped-only').checked = false;
+
+  applyDiagFilters();
 }
 
-function renderDiagnostics(data) {
-  const container = document.getElementById('diag-container');
-  const sectionColor = { complaint: 'var(--orange)', cause: 'var(--blue)', correction: 'var(--green)' };
-  const sectionLabel = { complaint: 'COMPLAINT', cause: 'CAUSE', correction: 'CORRECTION' };
+function applyDiagFilters() {
+  const searchTerm  = (document.getElementById('diag-search')?.value || '').toLowerCase().trim();
+  const skippedOnly = document.getElementById('diag-skipped-only')?.checked;
 
-  const fmtDt = iso => {
-    if (!iso) return '';
-    return new Date(iso).toLocaleString();
-  };
+  diagFiltered = diagData.filter(s => {
+    // Search filter
+    if (searchTerm) {
+      const haystack = ((s.vin || '') + ' ' + (s.vehicle_info || '') + ' ' + (s.shop_name || '')).toLowerCase();
+      if (!haystack.includes(searchTerm)) return false;
+    }
+    // Skipped-only filter
+    if (skippedOnly) {
+      let generated = [];
+      try { generated = Array.isArray(s.questions_generated) ? s.questions_generated : (s.questions_generated ? JSON.parse(s.questions_generated) : []); } catch(e){}
+      let qaLog = [];
+      try { qaLog = Array.isArray(s.qa_log) ? s.qa_log : (s.qa_log ? JSON.parse(s.qa_log) : []); } catch(e){}
+      const answeredMap = {};
+      qaLog.forEach(qa => { if (qa.question) answeredMap[qa.question.trim()] = true; });
+      const hasSkipped = generated.some(q => !answeredMap[q.trim()]);
+      if (!hasSkipped) return false;
+    }
+    return true;
+  });
 
-  const html = data.map(s => {
-    const section  = (s.section_analyzed || 'complaint').toLowerCase();
-    const color    = sectionColor[section] || 'var(--text3)';
-    const label    = sectionLabel[section] || section.toUpperCase();
-    const text     = section === 'complaint' ? s.complaint : section === 'cause' ? s.cause : s.correction;
+  diagPage = 0;
+  renderDiagStats();
+  renderDiagPage();
+}
 
-    // Build answered map from qa_log
-    const answeredMap = {};
-    let qaLog = [];
-    try { qaLog = Array.isArray(s.qa_log) ? s.qa_log : (s.qa_log ? JSON.parse(s.qa_log) : []); } catch(e){}
-    qaLog.forEach(qa => { if (qa.question) answeredMap[qa.question.trim()] = qa.answer; });
+function renderDiagStats() {
+  const statsEl = document.getElementById('diag-stats');
+  if (!diagData.length) { statsEl.style.display = 'none'; return; }
 
-    // All generated questions
+  let totalGenerated = 0, totalAnswered = 0, totalSkipped = 0;
+  const bySection = { complaint: {g:0,a:0}, cause: {g:0,a:0}, correction: {g:0,a:0} };
+
+  diagData.forEach(s => {
     let generated = [];
     try { generated = Array.isArray(s.questions_generated) ? s.questions_generated : (s.questions_generated ? JSON.parse(s.questions_generated) : []); } catch(e){}
+    let qaLog = [];
+    try { qaLog = Array.isArray(s.qa_log) ? s.qa_log : (s.qa_log ? JSON.parse(s.qa_log) : []); } catch(e){}
+    const answeredMap = {};
+    qaLog.forEach(qa => { if (qa.question) answeredMap[qa.question.trim()] = true; });
 
-    const hasGenerated = generated.length > 0;
-    const answeredCount = generated.filter(q => answeredMap[q.trim()] !== undefined).length;
-    const skippedCount  = generated.length - answeredCount;
+    const sec = (s.section_analyzed || 'complaint').toLowerCase();
+    generated.forEach(q => {
+      totalGenerated++;
+      if (bySection[sec]) bySection[sec].g++;
+      if (answeredMap[q.trim()]) { totalAnswered++; if (bySection[sec]) bySection[sec].a++; }
+      else totalSkipped++;
+    });
+  });
 
-    // Question rows
-    const qRows = generated.map(q => {
-      const ans = answeredMap[q.trim()];
-      const answered = ans !== undefined;
-      return `<div style="display:flex;gap:10px;padding:8px 10px;border-radius:6px;background:var(--bg2);margin-bottom:6px;align-items:flex-start;">
-        <span style="font-size:14px;flex-shrink:0;margin-top:1px;">${answered ? '✅' : '⬜'}</span>
-        <div style="flex:1;">
-          <div style="font-size:13px;color:${answered ? 'var(--text)' : 'var(--text3)'};line-height:1.5;">${q}</div>
-          ${answered ? `<div style="font-size:12px;color:var(--orange);margin-top:4px;font-weight:600;">A: ${ans}</div>` : ''}
-        </div>
+  const pct = totalGenerated ? Math.round(totalAnswered / totalGenerated * 100) : 0;
+  const sectionColor = { complaint: 'var(--orange)', cause: 'var(--blue)', correction: 'var(--green)' };
+
+  statsEl.style.display = 'flex';
+  statsEl.innerHTML = `
+    <div style="text-align:center;">
+      <div style="font-size:22px;font-family:var(--font-display);color:var(--white);">${diagData.length}</div>
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">Sessions</div>
+    </div>
+    <div style="width:1px;background:var(--border);"></div>
+    <div style="text-align:center;">
+      <div style="font-size:22px;font-family:var(--font-display);color:var(--white);">${totalGenerated}</div>
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">Questions</div>
+    </div>
+    <div style="width:1px;background:var(--border);"></div>
+    <div style="text-align:center;">
+      <div style="font-size:22px;font-family:var(--font-display);color:var(--green);">${pct}%</div>
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">Answered</div>
+    </div>
+    <div style="width:1px;background:var(--border);"></div>
+    <div style="text-align:center;">
+      <div style="font-size:22px;font-family:var(--font-display);color:var(--red);">${totalSkipped}</div>
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">Skipped</div>
+    </div>
+    <div style="width:1px;background:var(--border);"></div>
+    ${['complaint','cause','correction'].map(sec => {
+      const d = bySection[sec];
+      const sp = d.g ? Math.round(d.a/d.g*100) : 0;
+      const c = sectionColor[sec];
+      return `<div style="text-align:center;">
+        <div style="font-size:18px;font-family:var(--font-display);color:${c};">${sp}%</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">${sec}</div>
       </div>`;
-    }).join('');
+    }).join('<div style="width:1px;background:var(--border);"></div>')}
+  `;
+}
 
-    // Also show any answered Q&A not in generated (e.g. from prior session carry-over)
-    const extraQA = qaLog.filter(qa => qa.question && !generated.includes(qa.question.trim()));
-    const extraRows = extraQA.map(qa => `
-      <div style="display:flex;gap:10px;padding:8px 10px;border-radius:6px;background:var(--bg2);margin-bottom:6px;align-items:flex-start;border:1px dashed var(--border2);">
-        <span style="font-size:14px;flex-shrink:0;margin-top:1px;">✅</span>
-        <div style="flex:1;">
-          <div style="font-size:11px;color:var(--text3);margin-bottom:2px;">From prior session</div>
-          <div style="font-size:13px;color:var(--text);line-height:1.5;">${qa.question}</div>
-          <div style="font-size:12px;color:var(--orange);margin-top:4px;font-weight:600;">A: ${qa.answer}</div>
-        </div>
-      </div>`).join('');
+function renderDiagPage() {
+  const container  = document.getElementById('diag-container');
+  const pagination = document.getElementById('diag-pagination');
+  const countEl    = document.getElementById('diag-count');
+  const total      = diagFiltered.length;
+  const totalPages = Math.ceil(total / DIAG_PER_PAGE);
+  const page       = diagPage;
 
-    return `<div style="margin-bottom:16px;background:var(--card);border:1px solid var(--border);border-left:3px solid ${color};border-radius:8px;overflow:hidden;">
+  countEl.textContent = `${total} of ${diagData.length} sessions`;
 
-      <!-- Card header -->
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);">
-        <div style="display:flex;align-items:center;gap:12px;">
-          <span style="font-family:var(--font-cond);font-size:11px;font-weight:700;letter-spacing:.1em;color:${color};">${label}</span>
-          <span style="font-family:var(--font);font-size:11px;color:var(--orange);">${s.vin || '—'}</span>
-          <span style="font-size:12px;color:var(--text2);">${s.vehicle_info || ''}</span>
-          <span style="font-size:11px;color:var(--text3);">${s.shop_name || ''}</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:12px;">
-          ${hasGenerated ? `<span style="font-size:11px;color:var(--green);">✅ ${answeredCount} answered</span>
-          <span style="font-size:11px;color:var(--text3);">⬜ ${skippedCount} skipped</span>` : ''}
-          <span style="font-size:11px;color:var(--text3);">${fmtDt(s.created_at)}</span>
-        </div>
+  if (!total) {
+    container.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:16px;">No sessions match your filters.</div>';
+    pagination.style.display = 'none';
+    return;
+  }
+
+  const slice = diagFiltered.slice(page * DIAG_PER_PAGE, (page + 1) * DIAG_PER_PAGE);
+  container.innerHTML = slice.map(s => buildDiagCard(s)).join('');
+
+  // Pagination
+  if (totalPages <= 1) {
+    pagination.style.display = 'none';
+  } else {
+    pagination.style.display = 'flex';
+    const prevDisabled = page === 0;
+    const nextDisabled = page >= totalPages - 1;
+    pagination.innerHTML = `
+      <button class="btn btn-ghost" onclick="diagGoPage(${page-1})" ${prevDisabled ? 'disabled style="opacity:.4;"' : ''}>← Prev</button>
+      <span style="font-size:13px;color:var(--text2);padding:0 8px;">Page ${page+1} of ${totalPages}</span>
+      <button class="btn btn-ghost" onclick="diagGoPage(${page+1})" ${nextDisabled ? 'disabled style="opacity:.4;"' : ''}>Next →</button>
+    `;
+  }
+}
+
+function diagGoPage(p) {
+  diagPage = p;
+  renderDiagPage();
+  document.getElementById('tab-diagnostics').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function buildDiagCard(s) {
+  const sectionColor = { complaint: 'var(--orange)', cause: 'var(--blue)', correction: 'var(--green)' };
+  const sectionLabel = { complaint: 'COMPLAINT', cause: 'CAUSE', correction: 'CORRECTION' };
+  const section  = (s.section_analyzed || 'complaint').toLowerCase();
+  const color    = sectionColor[section] || 'var(--text3)';
+  const label    = sectionLabel[section] || section.toUpperCase();
+  const text     = section === 'complaint' ? s.complaint : section === 'cause' ? s.cause : s.correction;
+
+  const answeredMap = {};
+  let qaLog = [];
+  try { qaLog = Array.isArray(s.qa_log) ? s.qa_log : (s.qa_log ? JSON.parse(s.qa_log) : []); } catch(e){}
+  qaLog.forEach(qa => { if (qa.question) answeredMap[qa.question.trim()] = qa.answer; });
+
+  let generated = [];
+  try { generated = Array.isArray(s.questions_generated) ? s.questions_generated : (s.questions_generated ? JSON.parse(s.questions_generated) : []); } catch(e){}
+
+  const hasGenerated  = generated.length > 0;
+  const answeredCount = generated.filter(q => answeredMap[q.trim()] !== undefined).length;
+  const skippedCount  = generated.length - answeredCount;
+
+  const qRows = generated.map(q => {
+    const ans      = answeredMap[q.trim()];
+    const answered = ans !== undefined;
+    return `<div style="display:flex;gap:10px;padding:8px 10px;border-radius:6px;background:var(--bg2);margin-bottom:6px;align-items:flex-start;">
+      <span style="font-size:14px;flex-shrink:0;margin-top:1px;">${answered ? '✅' : '⬜'}</span>
+      <div style="flex:1;">
+        <div style="font-size:13px;color:${answered ? 'var(--text)' : 'var(--text3)'};line-height:1.5;">${q}</div>
+        ${answered ? `<div style="font-size:12px;color:var(--orange);margin-top:4px;font-weight:600;">A: ${ans}</div>` : ''}
       </div>
-
-      <!-- CCC text submitted -->
-      <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
-        <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">Text Submitted</div>
-        <div style="font-size:13px;color:var(--text2);line-height:1.6;">${text || '<span style="color:var(--text3);font-style:italic;">empty</span>'}</div>
-      </div>
-
-      <!-- Questions -->
-      ${hasGenerated || extraRows ? `<div style="padding:12px 16px;">
-        <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">
-          Questions Generated ${hasGenerated ? `(${generated.length} total)` : ''}
-        </div>
-        ${qRows}
-        ${extraRows}
-      </div>` : `<div style="padding:12px 16px;color:var(--text3);font-size:13px;font-style:italic;">No question data — this session predates the questions_generated column.</div>`}
-
     </div>`;
   }).join('');
 
-  container.innerHTML = `<div style="font-size:12px;color:var(--text3);margin-bottom:16px;">${data.length} sessions found</div>` + html;
+  const extraQA   = qaLog.filter(qa => qa.question && !generated.includes(qa.question.trim()));
+  const extraRows = extraQA.map(qa => `
+    <div style="display:flex;gap:10px;padding:8px 10px;border-radius:6px;background:var(--bg2);margin-bottom:6px;align-items:flex-start;border:1px dashed var(--border2);">
+      <span style="font-size:14px;flex-shrink:0;margin-top:1px;">✅</span>
+      <div style="flex:1;">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:2px;">Prior session</div>
+        <div style="font-size:13px;color:var(--text);line-height:1.5;">${qa.question}</div>
+        <div style="font-size:12px;color:var(--orange);margin-top:4px;font-weight:600;">A: ${qa.answer}</div>
+      </div>
+    </div>`).join('');
+
+  return `<div style="margin-bottom:12px;background:var(--card);border:1px solid var(--border);border-left:3px solid ${color};border-radius:8px;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border);">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <span style="font-family:var(--font-cond);font-size:11px;font-weight:700;letter-spacing:.1em;color:${color};">${label}</span>
+        <span style="font-family:var(--font);font-size:11px;color:var(--orange);">${s.vin || '—'}</span>
+        <span style="font-size:12px;color:var(--text2);">${s.vehicle_info || ''}</span>
+        <span style="font-size:11px;color:var(--text3);">${s.shop_name || ''}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;flex-shrink:0;">
+        ${hasGenerated ? `<span style="font-size:11px;color:var(--green);">✅ ${answeredCount}</span>
+        <span style="font-size:11px;color:var(--text3);">⬜ ${skippedCount}</span>` : ''}
+        <span style="font-size:11px;color:var(--text3);">${new Date(s.created_at).toLocaleString()}</span>
+      </div>
+    </div>
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:4px;">Text Submitted</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.6;">${text || '<span style="color:var(--text3);font-style:italic;">empty</span>'}</div>
+    </div>
+    ${hasGenerated || extraRows ? `<div style="padding:10px 16px;">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">Questions Generated (${generated.length})</div>
+      ${qRows}${extraRows}
+    </div>` : `<div style="padding:10px 16px;color:var(--text3);font-size:13px;font-style:italic;">No question data — predates questions_generated column.</div>`}
+  </div>`;
 }
 
-async function copyDiagnostics() {
-  if (!diagData.length) { alert('Load diagnostics first'); return; }
-  const btn = document.getElementById('diag-copy-btn');
-  btn.textContent = 'Building...';
-  btn.disabled = true;
-
+function buildDiagLines(dataset) {
   const lines = [];
   lines.push('CCC CO-PILOT — PROMPT DIAGNOSTICS REVIEW');
   lines.push('Generated: ' + new Date().toLocaleString());
-  lines.push('Entries: ' + diagData.length);
+  lines.push('Entries: ' + dataset.length);
   lines.push('='.repeat(60));
   lines.push('');
-
-  diagData.forEach((s, i) => {
+  dataset.forEach((s, i) => {
     const section = (s.section_analyzed || '').toUpperCase();
     const text    = s.section_analyzed === 'complaint' ? s.complaint : s.section_analyzed === 'cause' ? s.cause : s.correction;
     let qaLog = [];
@@ -1200,7 +1335,6 @@ async function copyDiagnostics() {
     qaLog.forEach(qa => { if (qa.question) answeredMap[qa.question.trim()] = qa.answer; });
     let generated = [];
     try { generated = Array.isArray(s.questions_generated) ? s.questions_generated : (s.questions_generated ? JSON.parse(s.questions_generated) : []); } catch(e){}
-
     lines.push(`ENTRY ${i+1} — ${new Date(s.created_at).toLocaleString()}`);
     lines.push(`Shop:     ${s.shop_name || 'Unknown'}`);
     lines.push(`VIN:      ${s.vin || '—'}  ${s.vehicle_info || ''}`);
@@ -1218,11 +1352,15 @@ async function copyDiagnostics() {
     lines.push('-'.repeat(60));
     lines.push('');
   });
-
   lines.push('---');
   lines.push('Paste this into Claude and say: Review these CCC Co-Pilot prompt diagnostics. Identify questions that are frequently skipped, misplaced, or could be improved. Suggest any new Rules to add in the admin Rules tab.');
+  return lines.join('\n');
+}
 
-  const text = lines.join('\n');
+async function copyToClipboard(text, btnId, label) {
+  const btn = document.getElementById(btnId);
+  btn.textContent = 'Copying...';
+  btn.disabled = true;
   try {
     await navigator.clipboard.writeText(text);
   } catch(e) {
@@ -1238,11 +1376,35 @@ async function copyDiagnostics() {
   btn.style.color = 'var(--green)';
   btn.style.borderColor = 'var(--green)';
   setTimeout(() => {
-    btn.textContent = '📋 Copy for Review';
+    btn.textContent = label;
     btn.style.color = '';
     btn.style.borderColor = '';
     btn.disabled = false;
   }, 2500);
+}
+
+async function copyDiagnostics() {
+  if (!diagFiltered.length) { alert('No visible sessions to copy'); return; }
+  // Copy current page only if large dataset, otherwise copy all filtered
+  const dataset = diagFiltered.length > 100 
+    ? diagFiltered.slice(diagPage * DIAG_PER_PAGE, (diagPage + 1) * DIAG_PER_PAGE)
+    : diagFiltered;
+  copyToClipboard(buildDiagLines(dataset), 'diag-copy-btn', '📋 Copy visible');
+}
+
+async function copyDiagnosticsSkipped() {
+  if (!diagData.length) { alert('Load diagnostics first'); return; }
+  const skippedOnly = diagData.filter(s => {
+    let generated = [];
+    try { generated = Array.isArray(s.questions_generated) ? s.questions_generated : (s.questions_generated ? JSON.parse(s.questions_generated) : []); } catch(e){}
+    let qaLog = [];
+    try { qaLog = Array.isArray(s.qa_log) ? s.qa_log : (s.qa_log ? JSON.parse(s.qa_log) : []); } catch(e){}
+    const answeredMap = {};
+    qaLog.forEach(qa => { if (qa.question) answeredMap[qa.question.trim()] = true; });
+    return generated.some(q => !answeredMap[q.trim()]);
+  });
+  if (!skippedOnly.length) { alert('No sessions with skipped questions found'); return; }
+  copyToClipboard(buildDiagLines(skippedOnly), 'diag-copy-skipped-btn', '📋 Copy skipped only');
 }
 
 // ── ACTIVITY FEED ────────────────────────────────────────────
