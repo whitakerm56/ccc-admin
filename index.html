@@ -1007,26 +1007,52 @@ async function selectActivityVin(shopId, vin) {
     detail.innerHTML = '<div style="color:var(--text3);font-size:13px;">No sessions found for this VIN</div>';
     return;
   }
-  const html = sessions.map(s => {
-    const time    = new Date(s.created_at).toLocaleString();
-    const section = (s.section_analyzed || '').toUpperCase();
-    const sc      = section === 'COMPLAINT' ? 'var(--amber)' : section === 'CAUSE' ? 'var(--blue)' : 'var(--green)';
+  // Filter out empty init placeholders (no CCC text and no Q&A)
+  const displaySessions = sessions.filter(s => {
+    const hasContent = s.complaint || s.cause || s.correction;
     let qa = [];
     try { qa = Array.isArray(s.qa_log) ? s.qa_log : (s.qa_log ? JSON.parse(s.qa_log) : []); } catch(e){}
+    return hasContent || qa.length > 0;
+  });
+
+  if (!displaySessions.length) {
+    detail.innerHTML = '<div style="color:var(--text3);font-size:13px;">No activity yet for this VIN — run an analysis first.</div>';
+    return;
+  }
+
+  const html = displaySessions.map(s => {
+    const time    = new Date(s.created_at).toLocaleString();
+    const section = (s.section_analyzed || '').toUpperCase();
+    const sc      = section === 'COMPLAINT' ? 'var(--amber)' : section === 'CAUSE' ? 'var(--blue)' : section === 'CORRECTION' ? 'var(--green)' : 'var(--text3)';
+    let qa = [];
+    try { qa = Array.isArray(s.qa_log) ? s.qa_log : (s.qa_log ? JSON.parse(s.qa_log) : []); } catch(e){}
+
+    // Only show CCC fields relevant to this session's section to avoid redundancy
     let body = '';
-    if (s.complaint)  body += `<div style="margin-bottom:8px;"><span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--amber);display:block;margin-bottom:3px;">Complaint</span><div style="font-size:13px;color:var(--text2);line-height:1.5;">${s.complaint}</div></div>`;
-    if (s.cause)      body += `<div style="margin-bottom:8px;"><span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--blue);display:block;margin-bottom:3px;">Cause</span><div style="font-size:13px;color:var(--text2);line-height:1.5;">${s.cause}</div></div>`;
-    if (s.correction) body += `<div style="margin-bottom:8px;"><span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--green);display:block;margin-bottom:3px;">Correction</span><div style="font-size:13px;color:var(--text2);line-height:1.5;">${s.correction}</div></div>`;
+    if (section === 'COMPLAINT' && s.complaint)
+      body += `<div style="font-size:13px;color:var(--text2);line-height:1.6;">${s.complaint}</div>`;
+    else if (section === 'CAUSE' && s.cause)
+      body += `<div style="font-size:13px;color:var(--text2);line-height:1.6;">${s.cause}</div>`;
+    else if (section === 'CORRECTION' && s.correction)
+      body += `<div style="font-size:13px;color:var(--text2);line-height:1.6;">${s.correction}</div>`;
+    else {
+      // answer sessions or cross-section — show whatever is present
+      if (s.complaint)  body += `<div style="margin-bottom:6px;"><span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--amber);">Complaint</span><div style="font-size:13px;color:var(--text2);line-height:1.5;margin-top:2px;">${s.complaint}</div></div>`;
+      if (s.cause)      body += `<div style="margin-bottom:6px;"><span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--blue);">Cause</span><div style="font-size:13px;color:var(--text2);line-height:1.5;margin-top:2px;">${s.cause}</div></div>`;
+      if (s.correction) body += `<div style="margin-bottom:6px;"><span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--green);">Correction</span><div style="font-size:13px;color:var(--text2);line-height:1.5;margin-top:2px;">${s.correction}</div></div>`;
+    }
+
     if (qa.length) {
-      body += '<div style="margin-top:10px;"><span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);display:block;margin-bottom:6px;">Q&amp;A</span>';
+      body += `<div style="margin-top:${body ? '12px' : '0'};"><span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);display:block;margin-bottom:6px;">Questions &amp; Answers</span>`;
       qa.forEach(item => {
         body += `<div style="margin-bottom:8px;padding:8px 10px;background:var(--bg2);border-radius:6px;font-size:12px;line-height:1.5;"><div style="color:var(--text2);margin-bottom:3px;">Q: ${item.question||''}</div><div style="color:var(--text);font-weight:600;">A: ${item.answer||''}</div></div>`;
       });
       body += '</div>';
     }
-    return `<div style="margin-bottom:16px;padding:14px 16px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-        <span style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${sc};background:${sc}18;padding:3px 8px;border-radius:4px;">${section||'INIT'}</span>
+
+    return `<div style="margin-bottom:12px;padding:14px 16px;background:var(--card);border:1px solid var(--border);border-left:3px solid ${sc};border-radius:8px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${body ? '10px' : '0'};">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${sc};">${section||'INIT'}</span>
         <span style="font-size:11px;color:var(--text3);">${time}</span>
       </div>${body}</div>`;
   }).join('');
