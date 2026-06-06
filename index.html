@@ -420,14 +420,19 @@ textarea { resize:vertical; min-height:80px; }
         <div class="section-title">Prompt Diagnostics</div>
         <div class="section-sub">Full question generation flow — what was generated, what was answered, what was skipped</div>
       </div>
-      <div style="display:flex;gap:10px;align-items:center;">
-        <select id="diag-days" onchange="loadDiagnostics()"
-          style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:13px;padding:7px 10px;outline:none;font-family:var(--sans);cursor:pointer;">
-          <option value="1">Today</option>
-          <option value="7" selected>Last 7 days</option>
-          <option value="30">Last 30 days</option>
-          <option value="9999">All time</option>
-        </select>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <label style="font-size:12px;color:var(--text3);font-family:var(--font-cond);letter-spacing:.04em;text-transform:uppercase;">From</label>
+          <input type="date" id="diag-from"
+            style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:13px;padding:7px 10px;outline:none;font-family:var(--sans);cursor:pointer;color-scheme:dark;"
+            onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border2)'"/>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <label style="font-size:12px;color:var(--text3);font-family:var(--font-cond);letter-spacing:.04em;text-transform:uppercase;">To</label>
+          <input type="date" id="diag-to"
+            style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:13px;padding:7px 10px;outline:none;font-family:var(--sans);cursor:pointer;color-scheme:dark;"
+            onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border2)'"/>
+        </div>
         <select id="diag-section" onchange="loadDiagnostics()"
           style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:13px;padding:7px 10px;outline:none;font-family:var(--sans);cursor:pointer;">
           <option value="">All sections</option>
@@ -1039,15 +1044,29 @@ async function copyLogsForReview() {
 // ── PROMPT DIAGNOSTICS ───────────────────────────────────────
 let diagData = [];
 
+function diagDefaultDates() {
+  // Set default date range: last 7 days
+  const today = new Date();
+  const week  = new Date(today);
+  week.setDate(week.getDate() - 7);
+  const fmt = d => d.toISOString().split('T')[0];
+  const fromEl = document.getElementById('diag-from');
+  const toEl   = document.getElementById('diag-to');
+  if (fromEl && !fromEl.value) fromEl.value = fmt(week);
+  if (toEl   && !toEl.value)   toEl.value   = fmt(today);
+}
+
 async function loadDiagnostics() {
+  diagDefaultDates();
   const container = document.getElementById('diag-container');
   if (!container) return;
   container.innerHTML = '<div class="loading"><div class="spin"></div></div>';
 
-  const days    = document.getElementById('diag-days')?.value || '7';
+  const fromVal = document.getElementById('diag-from')?.value || '';
+  const toVal   = document.getElementById('diag-to')?.value   || '';
   const section = document.getElementById('diag-section')?.value || '';
 
-  let url = `/admin/diagnostics?days=${days}`;
+  let url = `/admin/diagnostics?from=${fromVal}&to=${toVal}`;
   if (section) url += `&section=${section}`;
 
   let data;
