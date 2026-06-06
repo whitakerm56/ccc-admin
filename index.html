@@ -415,37 +415,35 @@ textarea { resize:vertical; min-height:80px; }
 
   <!-- PROMPT DIAGNOSTICS TAB -->
   <div class="tab-content" id="tab-diagnostics">
-    <div class="section-header" style="flex-wrap:wrap;gap:12px;">
-      <div>
-        <div class="section-title">Prompt Diagnostics</div>
-        <div class="section-sub">Full question generation flow — what was generated, what was answered, what was skipped</div>
-      </div>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <div style="display:flex;align-items:center;gap:6px;">
-          <label style="font-size:12px;color:var(--text3);font-family:var(--font-cond);letter-spacing:.04em;text-transform:uppercase;">From</label>
-          <input type="date" id="diag-from"
-            style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:13px;padding:7px 10px;outline:none;font-family:var(--sans);cursor:pointer;color-scheme:dark;"
-            onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border2)'"/>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <label style="font-size:12px;color:var(--text3);font-family:var(--font-cond);letter-spacing:.04em;text-transform:uppercase;">To</label>
-          <input type="date" id="diag-to"
-            style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:13px;padding:7px 10px;outline:none;font-family:var(--sans);cursor:pointer;color-scheme:dark;"
-            onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border2)'"/>
-        </div>
-        <select id="diag-section"
-          style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:13px;padding:7px 10px;outline:none;font-family:var(--sans);cursor:pointer;">
-          <option value="">All sections</option>
-          <option value="complaint">Complaint</option>
-          <option value="cause">Cause</option>
-          <option value="correction">Correction</option>
-        </select>
-        <button class="btn btn-primary" onclick="loadDiagnostics()" style="padding:7px 18px;">Apply</button>
-      </div>
+
+    <!-- Title row -->
+    <div style="margin-bottom:16px;">
+      <div class="section-title">Prompt Diagnostics</div>
+      <div class="section-sub">Full question generation flow — what was generated, what was answered, what was skipped</div>
+    </div>
+
+    <!-- Filter bar — single row -->
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:nowrap;">
+      <span style="font-size:12px;color:var(--text3);font-family:var(--font-cond);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;">From</span>
+      <input type="date" id="diag-from"
+        style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:13px;padding:6px 10px;outline:none;font-family:var(--sans);cursor:pointer;color-scheme:dark;width:148px;"
+        onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border2)'"/>
+      <span style="font-size:12px;color:var(--text3);font-family:var(--font-cond);letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;">To</span>
+      <input type="date" id="diag-to"
+        style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:13px;padding:6px 10px;outline:none;font-family:var(--sans);cursor:pointer;color-scheme:dark;width:148px;"
+        onfocus="this.style.borderColor='var(--orange)'" onblur="this.style.borderColor='var(--border2)'"/>
+      <select id="diag-section"
+        style="background:var(--bg2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:13px;padding:6px 10px;outline:none;font-family:var(--sans);cursor:pointer;width:148px;">
+        <option value="">All sections</option>
+        <option value="complaint">Complaint</option>
+        <option value="cause">Cause</option>
+        <option value="correction">Correction</option>
+      </select>
+      <button class="btn btn-primary" onclick="loadDiagnostics()" style="padding:6px 20px;white-space:nowrap;">Apply</button>
     </div>
 
     <!-- Summary stats bar -->
-    <div id="diag-stats" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 20px;margin-bottom:16px;display:flex;gap:32px;align-items:center;flex-wrap:wrap;"></div>
+    <div id="diag-stats" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 20px;margin-bottom:16px;gap:24px;align-items:center;flex-wrap:wrap;"></div>
 
     <!-- Client-side filter bar -->
     <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
@@ -1177,37 +1175,45 @@ function renderDiagStats() {
   const pct = totalGenerated ? Math.round(totalAnswered / totalGenerated * 100) : 0;
   const sectionColor = { complaint: 'var(--orange)', cause: 'var(--blue)', correction: 'var(--green)' };
 
+  // Color answered % green if good, amber if mid, red if low
+  const pctColor = pct >= 60 ? 'var(--green)' : pct >= 30 ? 'var(--gold)' : 'var(--red)';
+  // Skipped count neutral unless >50% of questions skipped
+  const skipColor = totalGenerated && (totalSkipped / totalGenerated > 0.5) ? 'var(--red)' : 'var(--text2)';
+
   statsEl.style.display = 'flex';
   statsEl.innerHTML = `
-    <div style="text-align:center;">
-      <div style="font-size:22px;font-family:var(--font-display);color:var(--white);">${diagData.length}</div>
-      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">Sessions</div>
+    <div style="text-align:center;min-width:64px;">
+      <div style="font-size:24px;font-family:var(--font-display);color:var(--white);line-height:1;">${diagData.length}</div>
+      <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-top:4px;">Sessions</div>
     </div>
-    <div style="width:1px;background:var(--border);"></div>
-    <div style="text-align:center;">
-      <div style="font-size:22px;font-family:var(--font-display);color:var(--white);">${totalGenerated}</div>
-      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">Questions</div>
+    <div style="width:1px;background:var(--border);align-self:stretch;"></div>
+    <div style="text-align:center;min-width:64px;">
+      <div style="font-size:24px;font-family:var(--font-display);color:var(--white);line-height:1;">${totalGenerated}</div>
+      <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-top:4px;">Questions</div>
     </div>
-    <div style="width:1px;background:var(--border);"></div>
-    <div style="text-align:center;">
-      <div style="font-size:22px;font-family:var(--font-display);color:var(--green);">${pct}%</div>
-      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">Answered</div>
+    <div style="width:1px;background:var(--border);align-self:stretch;"></div>
+    <div style="text-align:center;min-width:64px;">
+      <div style="font-size:24px;font-family:var(--font-display);color:${pctColor};line-height:1;">${pct}%</div>
+      <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-top:4px;">Answered</div>
     </div>
-    <div style="width:1px;background:var(--border);"></div>
-    <div style="text-align:center;">
-      <div style="font-size:22px;font-family:var(--font-display);color:var(--red);">${totalSkipped}</div>
-      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">Skipped</div>
+    <div style="width:1px;background:var(--border);align-self:stretch;"></div>
+    <div style="text-align:center;min-width:64px;">
+      <div style="font-size:24px;font-family:var(--font-display);color:${skipColor};line-height:1;">${totalSkipped}</div>
+      <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-top:4px;">Skipped</div>
     </div>
-    <div style="width:1px;background:var(--border);"></div>
-    ${['complaint','cause','correction'].map(sec => {
-      const d = bySection[sec];
-      const sp = d.g ? Math.round(d.a/d.g*100) : 0;
-      const c = sectionColor[sec];
-      return `<div style="text-align:center;">
-        <div style="font-size:18px;font-family:var(--font-display);color:${c};">${sp}%</div>
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;">${sec}</div>
-      </div>`;
-    }).join('<div style="width:1px;background:var(--border);"></div>')}
+    <div style="width:1px;background:var(--border);align-self:stretch;"></div>
+    <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;">
+      ${['complaint','cause','correction'].map(sec => {
+        const d  = bySection[sec];
+        const sp = d.g ? Math.round(d.a/d.g*100) : 0;
+        const c  = sectionColor[sec];
+        const spColor = d.g === 0 ? 'var(--text3)' : sp >= 60 ? 'var(--green)' : sp >= 30 ? 'var(--gold)' : 'var(--red)';
+        return `<div style="text-align:center;min-width:64px;">
+          <div style="font-size:20px;font-family:var(--font-display);color:${spColor};line-height:1;">${d.g ? sp+'%' : '—'}</div>
+          <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px;color:${c};">${sec}</div>
+        </div>`;
+      }).join('')}
+    </div>
   `;
 }
 
