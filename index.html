@@ -1007,54 +1007,97 @@ async function selectActivityVin(shopId, vin) {
     detail.innerHTML = '<div style="color:var(--text3);font-size:13px;">No sessions found for this VIN</div>';
     return;
   }
-  // Filter out empty init placeholders (no CCC text and no Q&A)
-  const displaySessions = sessions.filter(s => {
-    const hasContent = s.complaint || s.cause || s.correction;
-    let qa = [];
-    try { qa = Array.isArray(s.qa_log) ? s.qa_log : (s.qa_log ? JSON.parse(s.qa_log) : []); } catch(e){}
-    return hasContent || qa.length > 0;
-  });
+  // ── Build event feed exactly like the generator history panel ──
+  const sectionLabel = { complaint: 'COMPLAINT', cause: 'CAUSE', correction: 'CORRECTION' };
+  const sectionColor = { complaint: 'var(--amber)', cause: 'var(--blue)', correction: 'var(--green)' };
 
-  if (!displaySessions.length) {
-    detail.innerHTML = '<div style="color:var(--text3);font-size:13px;">No activity yet for this VIN — run an analysis first.</div>';
+  const fmtDt = iso => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const h = String(d.getHours()).padStart(2,'0');
+    const m = String(d.getMinutes()).padStart(2,'0');
+    const s = String(d.getSeconds()).padStart(2,'0');
+    return `${h}:${m}:${s}`;
+  };
+
+  // Filter out pure init placeholders
+  const realSessions = sessions.filter(s => s.source !== 'init');
+  if (!realSessions.length) {
+    detail.innerHTML = '<div style="color:var(--text3);font-size:13px;">No activity yet for this VIN.</div>';
     return;
   }
 
-  const html = displaySessions.map(s => {
-    const time    = new Date(s.created_at).toLocaleString();
-    const section = (s.section_analyzed || '').toUpperCase();
-    const sc      = section === 'COMPLAINT' ? 'var(--amber)' : section === 'CAUSE' ? 'var(--blue)' : section === 'CORRECTION' ? 'var(--green)' : 'var(--text3)';
+  // Build flat event list
+  const events = [];
+  for (const s of realSessions) {
+    const sec = s.section_analyzed || 'complaint';
+    const text = sec === 'complaint' ? s.complaint : sec === 'cause' ? s.cause : s.correction;
+    if (text && s.source !== 'answer') events.push({ type: 'ccc', section: sec, text, ts: s.created_at });
     let qa = [];
     try { qa = Array.isArray(s.qa_log) ? s.qa_log : (s.qa_log ? JSON.parse(s.qa_log) : []); } catch(e){}
-
-    // Only show CCC fields relevant to this session's section to avoid redundancy
-    let body = '';
-    if (section === 'COMPLAINT' && s.complaint)
-      body += `<div style="font-size:13px;color:var(--text2);line-height:1.6;">${s.complaint}</div>`;
-    else if (section === 'CAUSE' && s.cause)
-      body += `<div style="font-size:13px;color:var(--text2);line-height:1.6;">${s.cause}</div>`;
-    else if (section === 'CORRECTION' && s.correction)
-      body += `<div style="font-size:13px;color:var(--text2);line-height:1.6;">${s.correction}</div>`;
-    else {
-      // answer sessions or cross-section — show whatever is present
-      if (s.complaint)  body += `<div style="margin-bottom:6px;"><span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--amber);">Complaint</span><div style="font-size:13px;color:var(--text2);line-height:1.5;margin-top:2px;">${s.complaint}</div></div>`;
-      if (s.cause)      body += `<div style="margin-bottom:6px;"><span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--blue);">Cause</span><div style="font-size:13px;color:var(--text2);line-height:1.5;margin-top:2px;">${s.cause}</div></div>`;
-      if (s.correction) body += `<div style="margin-bottom:6px;"><span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--green);">Correction</span><div style="font-size:13px;color:var(--text2);line-height:1.5;margin-top:2px;">${s.correction}</div></div>`;
+    for (const qa_item of qa) {
+      events.push({ type: 'qa', question: qa_item.question, answer: qa_item.answer, section: qa_item.section || sec, ts: qa_item.ts || s.created_at });
     }
+  }
 
-    if (qa.length) {
-      body += `<div style="margin-top:${body ? '12px' : '0'};"><span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);display:block;margin-bottom:6px;">Questions &amp; Answers</span>`;
-      qa.forEach(item => {
-        body += `<div style="margin-bottom:8px;padding:8px 10px;background:var(--bg2);border-radius:6px;font-size:12px;line-height:1.5;"><div style="color:var(--text2);margin-bottom:3px;">Q: ${item.question||''}</div><div style="color:var(--text);font-weight:600;">A: ${item.answer||''}</div></div>`;
-      });
-      body += '</div>';
+  // Deduplicate Q&A by question text
+  const seenQs = new Set();
+  const dedupedEvents = events.filter(e => {
+    if (e.type !== 'qa') return true;
+    if (seenQs.has(e.question)) return false;
+    seenQs.add(e.question);
+    return true;
+  });
+
+  // Merge consecutive CCC entries for same section into before→after (rewrite)
+  const feed = [];
+  for (const e of dedupedEvents) {
+    if (e.type === 'ccc') {
+      const last = feed[feed.length - 1];
+      if (last && last.type === 'ccc' && last.section === e.section && last.text !== e.text) {
+        last.textBefore = last.textBefore || last.text;
+        last.text = e.text;
+        last.ts2 = e.ts;
+      } else if (!last || last.type !== 'ccc' || last.section !== e.section || last.text !== e.text) {
+        feed.push({ ...e });
+      }
+    } else {
+      feed.push(e);
     }
+  }
 
-    return `<div style="margin-bottom:12px;padding:14px 16px;background:var(--card);border:1px solid var(--border);border-left:3px solid ${sc};border-radius:8px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${body ? '10px' : '0'};">
-        <span style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${sc};">${section||'INIT'}</span>
-        <span style="font-size:11px;color:var(--text3);">${time}</span>
-      </div>${body}</div>`;
+  if (!feed.length) {
+    detail.innerHTML = '<div style="color:var(--text3);font-size:13px;">No activity yet for this VIN.</div>';
+    return;
+  }
+
+  const html = feed.map(e => {
+    const color = sectionColor[e.section] || 'var(--text3)';
+    const label = sectionLabel[e.section] || (e.section||'').toUpperCase();
+    if (e.type === 'ccc') {
+      const hasRewrite = !!e.textBefore;
+      return `<div style="margin-bottom:10px;border-left:2px solid ${color};padding:10px 14px;background:var(--card);border-radius:0 6px 6px 0;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${color};">${label}</span>
+          <span style="font-size:10px;color:var(--text3);font-family:monospace;">${fmtDt(e.ts)}</span>
+        </div>
+        ${hasRewrite
+          ? `<div style="font-size:13px;color:var(--text3);line-height:1.6;margin-bottom:4px;">${e.textBefore}</div>
+             <div style="font-size:11px;color:var(--orange,#f97316);margin:4px 0;">↓ Rewritten</div>
+             <div style="font-size:13px;color:var(--text);line-height:1.6;">${e.text}</div>`
+          : `<div style="font-size:13px;color:var(--text);line-height:1.6;">${e.text}</div>`
+        }
+      </div>`;
+    } else {
+      return `<div style="margin-bottom:10px;border-left:2px solid ${color};padding:10px 14px;background:var(--card);border-radius:0 6px 6px 0;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${color};">${label}</span>
+          <span style="font-size:10px;color:var(--text3);font-family:monospace;">${fmtDt(e.ts)}</span>
+        </div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:4px;"><span style="color:var(--blue);font-weight:600;">Q:</span> ${e.question||''}</div>
+        <div style="font-size:13px;color:var(--text);"><span style="font-weight:600;">A:</span> ${e.answer||''}</div>
+      </div>`;
+    }
   }).join('');
   detail.innerHTML = html || '<div style="color:var(--text3);font-size:13px;">No detail available</div>';
 }
