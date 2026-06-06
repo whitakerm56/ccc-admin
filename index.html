@@ -255,6 +255,7 @@ textarea { resize:vertical; min-height:80px; }
     <button class="nav-btn" onclick="showTab('shops')">🏪 Shops</button>
     <button class="nav-btn" onclick="showTab('logs')">📋 Usage Logs</button>
     <button class="nav-btn" onclick="showTab('rules')">⚙️ Rules</button>
+    <button class="nav-btn" onclick="showTab('activity')">🔍 Activity Feed</button>
   </div>
   <div class="main">
 
@@ -311,6 +312,7 @@ textarea { resize:vertical; min-height:80px; }
           <div class="section-sub">All AI transactions — most recent first</div>
         </div>
         <button class="btn btn-ghost" onclick="loadLogs()">↻ Refresh</button>
+        <button class="btn btn-ghost" id="copy-logs-btn" onclick="copyLogsForReview()" style="margin-left:8px;">📋 Copy for Review</button>
       </div>
       <div class="card">
         <div class="table-wrap">
@@ -344,6 +346,42 @@ textarea { resize:vertical; min-height:80px; }
       </div>
       <div id="rules-list">
         <div class="loading"><div class="spin"></div></div>
+      </div>
+    </div>
+
+  <!-- ACTIVITY FEED TAB -->
+    <div class="tab-content" id="tab-activity">
+      <div class="section-header">
+        <div>
+          <div class="section-title">Activity Feed</div>
+          <div class="section-sub">Live view of all shop sessions — select a shop, then a VIN, then see the full Q&A and rewrite history</div>
+        </div>
+        <button class="btn btn-ghost" id="activity-refresh-btn" onclick="loadActivity()">↻ Refresh</button>
+      </div>
+      <div style="display:flex;gap:16px;height:680px;">
+
+        <!-- Column 1: Shops -->
+        <div style="width:220px;flex-shrink:0;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:10px;">Shops</div>
+          <div id="activity-shops" style="display:flex;flex-direction:column;gap:6px;overflow-y:auto;height:100%;padding-right:4px;"></div>
+        </div>
+
+        <!-- Column 2: VIN History -->
+        <div style="width:260px;flex-shrink:0;border-left:1px solid var(--border);padding-left:16px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:10px;">VIN History</div>
+          <div id="activity-vins" style="display:flex;flex-direction:column;gap:6px;overflow-y:auto;height:100%;padding-right:4px;">
+            <div style="color:var(--text3);font-size:13px;padding:12px 0;">Select a shop to view VINs</div>
+          </div>
+        </div>
+
+        <!-- Column 3: Session Detail -->
+        <div style="flex:1;border-left:1px solid var(--border);padding-left:16px;overflow-y:auto;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:10px;">Session Detail</div>
+          <div id="activity-detail">
+            <div style="color:var(--text3);font-size:13px;padding:12px 0;">Select a VIN to view its activity</div>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -627,7 +665,8 @@ function showTab(name) {
   if (name === 'stats')  loadStats();
   if (name === 'shops')  loadShops();
   if (name === 'logs')   loadLogs();
-  if (name === 'rules')  loadRules();
+  if (name === 'rules')    loadRules();
+  if (name === 'activity') loadActivity();
 }
 
 function loadAll() {
@@ -782,6 +821,175 @@ async function loadLogs() {
       <td class="token-count">${l.tokens_used ? l.tokens_used.toLocaleString() : '—'}</td>
     </tr>
   `).join('');
+}
+
+async function copyLogsForReview() {
+  const btn = document.getElementById("copy-logs-btn");
+  btn.textContent = "Loading...";
+  btn.disabled = true;
+
+  const logs = await sb("usage_logs?select=*,shops(name)&order=created_at.desc&limit=100");
+
+  if (!logs || logs.length === 0) {
+    btn.textContent = "No logs found";
+    setTimeout(() => { btn.textContent = "📋 Copy for Review"; btn.disabled = false; }, 2000);
+    return;
+  }
+
+  const lines = [];
+  lines.push("CCC CO-PILOT — USAGE LOG REVIEW");
+  lines.push("Generated: " + new Date().toLocaleString());
+  lines.push("Entries: " + logs.length);
+  lines.push("=".repeat(60));
+  lines.push("");
+
+  logs.forEach((l, i) => {
+    lines.push(`ENTRY ${i + 1} — ${new Date(l.created_at).toLocaleString()}`);
+    lines.push(`Shop:       ${l.shops?.name || "Unknown"}`);
+    lines.push(`Section:    ${(l.section || "—").toUpperCase()}`);
+    if (l.complaint_text) lines.push(`Complaint:  ${l.complaint_text}`);
+    if (l.cause_text)     lines.push(`Cause:      ${l.cause_text}`);
+    if (l.correction_text)lines.push(`Correction: ${l.correction_text}`);
+    if (l.ai_response) {
+      try {
+        const parsed = typeof l.ai_response === "string" ? JSON.parse(l.ai_response) : l.ai_response;
+        if (parsed.rating)    lines.push(`Rating:     ${parsed.rating}`);
+        if (parsed.rewrite)   lines.push(`Rewrite:    ${parsed.rewrite}`);
+        if (parsed.questions?.length) {
+          lines.push("Questions generated:");
+          parsed.questions.forEach((q, qi) => lines.push(`  Q${qi + 1}: ${q}`));
+        }
+      } catch(e) {
+        lines.push(`AI Response: ${String(l.ai_response).slice(0, 300)}`);
+      }
+    }
+    lines.push(`Tokens:     ${l.tokens_used || "—"}`);
+    lines.push("-".repeat(60));
+    lines.push("");
+  });
+
+  lines.push("END OF LOG");
+  lines.push("");
+  lines.push("---");
+  lines.push("Paste this into Claude and say: Review these CCC Co-Pilot usage logs for prompt issues, misplaced questions, or patterns worth turning into rules.");
+
+  const text = lines.join("\n");
+
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.textContent = "✓ Copied!";
+    btn.style.color = "var(--green)";
+    btn.style.borderColor = "var(--green)";
+  } catch(e) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText = "position:fixed;top:-9999px;left:-9999px;";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    btn.textContent = "✓ Copied!";
+    btn.style.color = "var(--green)";
+    btn.style.borderColor = "var(--green)";
+  }
+
+  setTimeout(() => {
+    btn.textContent = "📋 Copy for Review";
+    btn.style.color = "";
+    btn.style.borderColor = "";
+    btn.disabled = false;
+  }, 2500);
+}
+
+
+// ── ACTIVITY FEED ────────────────────────────────────────────
+let activitySelectedShop = null;
+let activitySelectedVin  = null;
+
+async function loadActivity() {
+  const shops = await sb('shops?select=id,name,status&order=name');
+  const container = document.getElementById('activity-shops');
+  if (!shops || !shops.length) {
+    container.innerHTML = '<div style="color:var(--text3);font-size:13px;">No shops found</div>';
+    return;
+  }
+  container.innerHTML = shops.map(s => `
+    <div class="activity-shop-row" id="asr-${s.id}"
+      onclick="selectActivityShop('${s.id}','${(s.name||'').replace(/'/g,\"\\'\")}' )"
+      style="cursor:pointer;padding:10px 12px;border-radius:8px;border:1px solid var(--border);font-size:13px;font-weight:600;transition:all .15s;">
+      <div style="color:var(--text);margin-bottom:2px;">${s.name||'Unnamed'}</div>
+      <div style="font-size:11px;color:${s.status==='active'?'var(--green)':'var(--text3)'};">${s.status||'unknown'}</div>
+    </div>
+  `).join('');
+  if (activitySelectedShop) selectActivityShop(activitySelectedShop.id, activitySelectedShop.name, true);
+}
+
+async function selectActivityShop(shopId, shopName, silent) {
+  activitySelectedShop = { id: shopId, name: shopName };
+  activitySelectedVin  = null;
+  document.querySelectorAll('.activity-shop-row').forEach(r => r.style.background = '');
+  const row = document.getElementById('asr-' + shopId);
+  if (row) row.style.background = 'var(--amber-dim)';
+  document.getElementById('activity-vins').innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0;">Loading...</div>';
+  document.getElementById('activity-detail').innerHTML = '<div style="color:var(--text3);font-size:13px;padding:12px 0;">Select a VIN</div>';
+  const sessions = await sb(`sessions?select=vin,vehicle_info,created_at&shop_id=eq.${shopId}&order=created_at.desc`);
+  const vinContainer = document.getElementById('activity-vins');
+  if (!sessions || !sessions.length) {
+    vinContainer.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0;">No sessions for this shop</div>';
+    return;
+  }
+  const seen = new Set();
+  const unique = sessions.filter(s => { if (seen.has(s.vin)) return false; seen.add(s.vin); return true; });
+  vinContainer.innerHTML = unique.map(s => {
+    const vInfo = s.vehicle_info || s.vin || 'Unknown';
+    const date  = new Date(s.created_at).toLocaleDateString();
+    return `
+      <div class="activity-vin-row" id="avr-${s.vin}"
+        onclick="selectActivityVin('${shopId}','${s.vin}')"
+        style="cursor:pointer;padding:10px 12px;border-radius:8px;border:1px solid var(--border);font-size:12px;transition:all .15s;">
+        <div style="font-family:var(--font);color:var(--amber);font-size:11px;margin-bottom:3px;">${s.vin||'NO VIN'}</div>
+        <div style="color:var(--text2);">${vInfo}</div>
+        <div style="color:var(--text3);font-size:11px;margin-top:2px;">${date}</div>
+      </div>`;
+  }).join('');
+}
+
+async function selectActivityVin(shopId, vin) {
+  activitySelectedVin = vin;
+  document.querySelectorAll('.activity-vin-row').forEach(r => r.style.background = '');
+  const row = document.getElementById('avr-' + vin);
+  if (row) row.style.background = 'var(--blue-dim)';
+  const detail = document.getElementById('activity-detail');
+  detail.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0;">Loading...</div>';
+  const sessions = await sb(`sessions?select=*&shop_id=eq.${shopId}&vin=eq.${vin}&order=created_at.asc`);
+  if (!sessions || !sessions.length) {
+    detail.innerHTML = '<div style="color:var(--text3);font-size:13px;">No sessions found</div>';
+    return;
+  }
+  const html = sessions.map(s => {
+    const time    = new Date(s.created_at).toLocaleString();
+    const section = (s.section_analyzed || '').toUpperCase();
+    const sc      = section === 'COMPLAINT' ? 'var(--amber)' : section === 'CAUSE' ? 'var(--blue)' : 'var(--green)';
+    let qa = [];
+    try { qa = Array.isArray(s.qa_log) ? s.qa_log : (s.qa_log ? JSON.parse(s.qa_log) : []); } catch(e){}
+    let body = '';
+    if (s.complaint)  body += `<div style="margin-bottom:8px;"><span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--amber);display:block;margin-bottom:3px;">Complaint</span><div style="font-size:13px;color:var(--text2);line-height:1.5;">${s.complaint}</div></div>`;
+    if (s.cause)      body += `<div style="margin-bottom:8px;"><span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--blue);display:block;margin-bottom:3px;">Cause</span><div style="font-size:13px;color:var(--text2);line-height:1.5;">${s.cause}</div></div>`;
+    if (s.correction) body += `<div style="margin-bottom:8px;"><span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--green);display:block;margin-bottom:3px;">Correction</span><div style="font-size:13px;color:var(--text2);line-height:1.5;">${s.correction}</div></div>`;
+    if (qa.length) {
+      body += '<div style="margin-top:10px;"><span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);display:block;margin-bottom:6px;">Q&amp;A</span>';
+      qa.forEach(item => {
+        body += `<div style="margin-bottom:8px;padding:8px 10px;background:var(--bg2);border-radius:6px;font-size:12px;line-height:1.5;"><div style="color:var(--text2);margin-bottom:3px;">Q: ${item.question||''}</div><div style="color:var(--text);font-weight:600;">A: ${item.answer||''}</div></div>`;
+      });
+      body += '</div>';
+    }
+    return `<div style="margin-bottom:16px;padding:14px 16px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${sc};background:${sc}18;padding:3px 8px;border-radius:4px;">${section||'INIT'}</span>
+        <span style="font-size:11px;color:var(--text3);">${time}</span>
+      </div>${body}</div>`;
+  }).join('');
+  detail.innerHTML = html || '<div style="color:var(--text3);font-size:13px;">No detail available</div>';
 }
 
 // ── RULES ────────────────────────────────────────────────────
