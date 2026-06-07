@@ -1168,11 +1168,25 @@ function renderDiagStats() {
     qaLog.forEach(qa => { if (qa.question) answeredMap[qa.question.trim()] = true; });
 
     const sec = (s.section_analyzed || 'complaint').toLowerCase();
+
+    // Count generated questions — answered or skipped
     generated.forEach(q => {
       totalGenerated++;
       if (bySection[sec]) bySection[sec].g++;
       if (answeredMap[q.trim()]) { totalAnswered++; if (bySection[sec]) bySection[sec].a++; }
       else totalSkipped++;
+    });
+
+    // Also count prior-session Q&A not in questions_generated
+    const generatedSet = new Set(generated.map(q => q.trim()));
+    qaLog.forEach(qa => {
+      if (!qa.question) return;
+      if (generatedSet.has(qa.question.trim())) return; // already counted above
+      // This is a carry-over answered question — count it as generated + answered
+      const qSec = (qa.section || sec).toLowerCase();
+      totalGenerated++;
+      totalAnswered++;
+      if (bySection[qSec]) { bySection[qSec].g++; bySection[qSec].a++; }
     });
   });
 
