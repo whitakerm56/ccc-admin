@@ -1785,13 +1785,10 @@ async function doEditIp() {
     err.style.display = 'block'; return;
   }
 
-  const { error } = await sb
-    .from('shops')
-    .update({ ip_address: ip })
-    .eq('id', editIpShopId);
-
-  if (error) {
-    err.textContent = 'Failed to update IP: ' + error.message;
+  try {
+    await adminFetch(`/admin/all-shops/${editIpShopId}`, 'PATCH', { ip_address: ip });
+  } catch(e) {
+    err.textContent = 'Failed to update IP: ' + e.message;
     err.style.display = 'block'; return;
   }
 
@@ -1836,13 +1833,10 @@ async function doResetPin() {
   // Hash the PIN client-side (same salt as Worker)
   const pinHash = await hashPin(pin);
 
-  const { error } = await sb
-    .from('shops')
-    .update({ billing_pin: pinHash })
-    .eq('id', resetPinShopId);
-
-  if (error) {
-    err.textContent = 'Failed to update PIN: ' + error.message;
+  try {
+    await adminFetch(`/admin/all-shops/${resetPinShopId}`, 'PATCH', { billing_pin: pinHash });
+  } catch(e) {
+    err.textContent = 'Failed to update PIN: ' + e.message;
     err.style.display = 'block'; return;
   }
 
