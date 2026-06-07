@@ -806,10 +806,17 @@ async function sb(path, method='GET', body=null) {
 }
 
 // ── ADMIN WORKER FETCH ───────────────────────────────────────
-async function adminFetch(path) {
-  const res = await fetch(`${WORKER}${path}`, {
-    headers: { 'x-admin-secret': ADMIN_SECRET }
-  });
+async function adminFetch(path, method='GET', body=null) {
+  const opts = {
+    method,
+    headers: {
+      'x-admin-secret': ADMIN_SECRET,
+      'Content-Type': 'application/json',
+    },
+  };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(`${WORKER}${path}`, opts);
+  if (method === 'DELETE' || res.status === 204) return null;
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `HTTP ${res.status}`);
@@ -838,10 +845,7 @@ function loadAll() {
 
 // ── STATS ────────────────────────────────────────────────────
 async function loadStats() {
-  const [shops, logs] = await Promise.all([
-    sb('shops?select=id,status'),
-    sb('usage_logs?select=id,tokens_used,created_at'),
-  ]);
+  const { shops, logs } = await adminFetch('/admin/stats');
 
   const active   = shops.filter(s => s.status === 'active').length;
   const total    = shops.length;
@@ -882,7 +886,7 @@ async function loadStats() {
 
 // ── SHOPS ────────────────────────────────────────────────────
 async function loadShops() {
-  const shops = await sb('shops?select=*&order=created_at.desc');
+  const shops = await adminFetch('/admin/all-shops');
   const tbody = document.getElementById('shops-tbody');
 
   if (!shops || shops.length === 0) {
@@ -919,14 +923,14 @@ async function loadShops() {
 
 async function toggleShop(id, currentStatus) {
   const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
-  await sb(`shops?id=eq.${id}`, 'PATCH', { status: newStatus });
+  await adminFetch(`/admin/all-shops/${id}`, 'PATCH', { status: newStatus });
   loadShops();
   loadStats();
 }
 
 async function deleteShop(id, name) {
   if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
-  await sb(`shops?id=eq.${id}`, 'DELETE');
+  await adminFetch(`/admin/all-shops/${id}`, 'DELETE');
   loadShops();
   loadStats();
 }
@@ -943,7 +947,7 @@ async function saveShop() {
   const ip   = document.getElementById('sh-ip').value.trim();
   if (!name || !ip) { alert('Shop name and IP address are required.'); return; }
 
-  await sb('shops', 'POST', {
+  await adminFetch('/admin/all-shops', 'POST', {
     name,
     ip_address: ip,
     contact_name:  document.getElementById('sh-contact').value.trim() || null,
@@ -961,7 +965,7 @@ async function saveShop() {
 
 // ── LOGS ─────────────────────────────────────────────────────
 async function loadLogs() {
-  const logs = await sb('usage_logs?select=*,shops(name)&order=created_at.desc&limit=100');
+  const logs = await adminFetch('/admin/logs');
   const tbody = document.getElementById('logs-tbody');
 
   if (!logs || logs.length === 0) {
@@ -990,7 +994,7 @@ async function copyLogsForReview() {
   btn.textContent = "Loading...";
   btn.disabled = true;
 
-  const logs = await sb("usage_logs?select=*,shops(name)&order=created_at.desc&limit=100");
+  const logs = await adminFetch("/admin/logs");
 
   if (!logs || logs.length === 0) {
     btn.textContent = "No logs found";
@@ -1644,7 +1648,7 @@ async function selectActivityVin(shopId, vin) {
 let editingRuleId = null;
 
 async function loadRules() {
-  const rules = await sb('rules?select=*&order=trigger_section,priority');
+  const rules = await adminFetch('/admin/rules');
   const container = document.getElementById('rules-list');
 
   if (!rules || rules.length === 0) {
@@ -1689,12 +1693,12 @@ async function loadRules() {
 }
 
 async function toggleRule(id, active) {
-  await sb(`rules?id=eq.${id}`, 'PATCH', { active });
+  await adminFetch(`/admin/rules/${id}`, 'PATCH', { active });
 }
 
 async function deleteRule(id, name) {
   if (!confirm(`Delete rule "${name}"?`)) return;
-  await sb(`rules?id=eq.${id}`, 'DELETE');
+  await adminFetch(`/admin/rules/${id}`, 'DELETE');
   loadRules();
 }
 
@@ -1743,9 +1747,9 @@ async function saveRule() {
   };
 
   if (editingRuleId) {
-    await sb(`rules?id=eq.${editingRuleId}`, 'PATCH', payload);
+    await adminFetch(`/admin/rules/${editingRuleId}`, 'PATCH', payload);
   } else {
-    await sb('rules', 'POST', payload);
+    await adminFetch('/admin/rules', 'POST', payload);
   }
 
   closeModal('modal-rule');
