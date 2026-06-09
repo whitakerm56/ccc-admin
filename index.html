@@ -1760,14 +1760,17 @@ async function saveRule() {
     active:              document.getElementById('rule-active').checked,
   };
 
-  if (editingRuleId) {
-    await adminFetch(`/admin/rules/${editingRuleId}`, 'PATCH', payload);
-  } else {
-    await adminFetch('/admin/rules', 'POST', payload);
+  try {
+    if (editingRuleId) {
+      await adminFetch(`/admin/rules/${editingRuleId}`, 'PATCH', payload);
+    } else {
+      await adminFetch('/admin/rules', 'POST', payload);
+    }
+    closeModal('modal-rule');
+    loadRules();
+  } catch(e) {
+    alert('Failed to save rule: ' + e.message);
   }
-
-  closeModal('modal-rule');
-  loadRules();
 }
 
 
