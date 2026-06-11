@@ -1619,7 +1619,7 @@ function renderActivityDetail(sessions) {
   for (const s of realSessions) {
     const sec = s.section_analyzed || 'complaint';
     const text = sec === 'complaint' ? s.complaint : sec === 'cause' ? s.cause : s.correction;
-    if (text && s.source !== 'answer') events.push({ type: 'ccc', section: sec, text, ts: s.created_at });
+    if (text && s.source !== 'answer') events.push({ type: 'ccc', section: sec, text, ts: s.created_at, sessionId: s.id });
     let qa = [];
     try { qa = Array.isArray(s.qa_log) ? s.qa_log : (s.qa_log ? JSON.parse(s.qa_log) : []); } catch(e){}
     for (const qa_item of qa) {
@@ -1636,7 +1636,7 @@ function renderActivityDetail(sessions) {
     return true;
   });
 
-  // Merge consecutive CCC entries for same section into before→after (rewrite)
+  // Build feed: merge same-section consecutive entries as rewrites, skip exact duplicates
   const feed = [];
   for (const e of dedupedEvents) {
     if (e.type === 'ccc') {
@@ -1645,7 +1645,7 @@ function renderActivityDetail(sessions) {
         last.textBefore = last.textBefore || last.text;
         last.text = e.text;
         last.ts2 = e.ts;
-      } else if (!last || last.type !== 'ccc' || last.section !== e.section || last.text !== e.text) {
+      } else if (!last || last.text !== e.text) {
         feed.push({ ...e });
       }
     } else {
