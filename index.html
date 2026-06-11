@@ -1485,7 +1485,7 @@ function renderVinList(vins) {
     const time = new Date(v.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
     const sectionLabel = { complaint: 'Complaint', cause: 'Cause', correction: 'Correction' }[v.section_analyzed] || (v.section_analyzed || 'Session');
     return `<div class="activity-vin-row" id="avr-${v.id || v.vin}"
-      onclick="selectActivitySession('${activitySelectedShop?.id}','${v.vin}','${v.id}')"
+      onclick="selectActivityVin('${activitySelectedShop?.id}','${v.vin}')"
       style="cursor:pointer;padding:10px 12px;border-radius:8px;border:1px solid var(--border);font-size:12px;transition:all .15s;${isActive ? 'background:var(--blue-dim);' : ''}">
       <div style="font-family:var(--font);color:var(--orange);font-size:11px;margin-bottom:3px;">${v.vin||'NO VIN'}</div>
       <div style="color:var(--text2);">${v.vehicle_info||v.vin||'Unknown'}</div>
