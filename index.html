@@ -1480,14 +1480,19 @@ function renderVinList(vins) {
     return;
   }
   container.innerHTML = vins.map(v => {
-    const isActive = activitySelectedVin === v.vin;
+    const isActive = activitySelectedVin === (v.id || v.vin);
     const date = new Date(v.created_at).toLocaleDateString();
-    return `<div class="activity-vin-row" id="avr-${v.vin}"
-      onclick="selectActivityVin('${activitySelectedShop?.id}','${v.vin}')"
+    const time = new Date(v.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    const sectionLabel = { complaint: 'Complaint', cause: 'Cause', correction: 'Correction' }[v.section_analyzed] || (v.section_analyzed || 'Session');
+    return `<div class="activity-vin-row" id="avr-${v.id || v.vin}"
+      onclick="selectActivitySession('${activitySelectedShop?.id}','${v.vin}','${v.id}')"
       style="cursor:pointer;padding:10px 12px;border-radius:8px;border:1px solid var(--border);font-size:12px;transition:all .15s;${isActive ? 'background:var(--blue-dim);' : ''}">
       <div style="font-family:var(--font);color:var(--orange);font-size:11px;margin-bottom:3px;">${v.vin||'NO VIN'}</div>
       <div style="color:var(--text2);">${v.vehicle_info||v.vin||'Unknown'}</div>
-      <div style="color:var(--text3);font-size:11px;margin-top:2px;">${date}</div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px;">
+        <span style="color:var(--text3);font-size:11px;">${sectionLabel}</span>
+        <span style="color:var(--text3);font-size:11px;">${date} ${time}</span>
+      </div>
     </div>`;
   }).join('');
 }
@@ -1542,10 +1547,10 @@ async function selectActivityShop(shopId, shopName, silent) {
   renderVinList(allActivityVins);
 }
 
-async function selectActivityVin(shopId, vin) {
-  activitySelectedVin = vin;
+async function selectActivitySession(shopId, vin, sessionId) {
+  activitySelectedVin = sessionId || vin;
   document.querySelectorAll('.activity-vin-row').forEach(r => r.style.background = '');
-  const row = document.getElementById('avr-' + vin);
+  const row = document.getElementById('avr-' + (sessionId || vin));
   if (row) row.style.background = 'var(--blue-dim)';
   const detail = document.getElementById('activity-detail');
   detail.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0;">Loading...</div>';
@@ -1559,11 +1564,37 @@ async function selectActivityVin(shopId, vin) {
     detail.innerHTML = `<div style="color:var(--red);font-size:13px;">Unexpected response</div>`;
     return;
   }
-  if (!sessions.length) {
+  // Filter to only the selected session if we have a session ID
+  const filtered = sessionId ? sessions.filter(s => String(s.id) === String(sessionId)) : sessions;
+  if (!filtered.length) {
+    detail.innerHTML = '<div style="color:var(--text3);font-size:13px;">No session found</div>';
+    return;
+  }
+  renderActivityDetail(filtered);
+}
+
+async function selectActivityVin(shopId, vin) {
+  activitySelectedVin = vin;
+  document.querySelectorAll('.activity-vin-row').forEach(r => r.style.background = '');
+  const row = document.getElementById('avr-' + vin);
+  if (row) row.style.background = 'var(--blue-dim)';
+  const detail = document.getElementById('activity-detail');
+  detail.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px 0;">Loading...</div>';
+  let sessions;
+  try { sessions = await adminFetch(`/admin/sessions?shop_id=${shopId}&vin=${encodeURIComponent(vin)}`); }
+  catch(e) {
+    detail.innerHTML = `<div style="color:var(--red);font-size:13px;">Error: ${e.message}</div>`;
+    return;
+  }
+  if (!Array.isArray(sessions) || !sessions.length) {
     detail.innerHTML = '<div style="color:var(--text3);font-size:13px;">No sessions found for this VIN</div>';
     return;
   }
-  // ── Build event feed exactly like the generator history panel ──
+  renderActivityDetail(sessions);
+}
+
+function renderActivityDetail(sessions) {
+  const detail = document.getElementById('activity-detail');
   const sectionLabel = { complaint: 'COMPLAINT', cause: 'CAUSE', correction: 'CORRECTION' };
   const sectionColor = { complaint: 'var(--orange)', cause: 'var(--blue)', correction: 'var(--green)' };
 
